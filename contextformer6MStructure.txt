@@ -1,0 +1,170 @@
+ContextFormer(
+  (embed_images): PVT_embed(
+    (pvt): FeatureListNet(
+      (patch_embed): OverlapPatchEmbed(
+        (proj): Conv2d(8, 32, kernel_size=(7, 7), stride=(4, 4), padding=(3, 3))
+        (norm): LayerNorm((32,), eps=1e-05, elementwise_affine=True)
+      )
+      (stages_0): PyramidVisionTransformerStage(
+        (blocks): ModuleList(
+          (0-1): 2 x Block(
+            (norm1): LayerNorm((32,), eps=1e-06, elementwise_affine=True)
+            (attn): Attention(
+              (q): Linear(in_features=32, out_features=32, bias=True)
+              (kv): Linear(in_features=32, out_features=64, bias=True)
+              (attn_drop): Dropout(p=0.0, inplace=False)
+              (proj): Linear(in_features=32, out_features=32, bias=True)
+              (proj_drop): Dropout(p=0.0, inplace=False)
+              (sr): Conv2d(32, 32, kernel_size=(8, 8), stride=(8, 8))
+              (norm): LayerNorm((32,), eps=1e-05, elementwise_affine=True)
+            )
+            (drop_path1): Identity()
+            (norm2): LayerNorm((32,), eps=1e-06, elementwise_affine=True)
+            (mlp): MlpWithDepthwiseConv(
+              (fc1): Linear(in_features=32, out_features=256, bias=True)
+              (relu): Identity()
+              (dwconv): Conv2d(256, 256, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1), groups=256)
+              (act): GELU(approximate='none')
+              (fc2): Linear(in_features=256, out_features=32, bias=True)
+              (drop): Dropout(p=0.0, inplace=False)
+            )
+            (drop_path2): Identity()
+          )
+        )
+        (norm): LayerNorm((32,), eps=1e-06, elementwise_affine=True)
+      )
+      (stages_1): PyramidVisionTransformerStage(
+        (downsample): OverlapPatchEmbed(
+          (proj): Conv2d(32, 64, kernel_size=(3, 3), stride=(2, 2), padding=(1, 1))
+          (norm): LayerNorm((64,), eps=1e-05, elementwise_affine=True)
+        )
+        (blocks): ModuleList(
+          (0-1): 2 x Block(
+            (norm1): LayerNorm((64,), eps=1e-06, elementwise_affine=True)
+            (attn): Attention(
+              (q): Linear(in_features=64, out_features=64, bias=True)
+              (kv): Linear(in_features=64, out_features=128, bias=True)
+              (attn_drop): Dropout(p=0.0, inplace=False)
+              (proj): Linear(in_features=64, out_features=64, bias=True)
+              (proj_drop): Dropout(p=0.0, inplace=False)
+              (sr): Conv2d(64, 64, kernel_size=(4, 4), stride=(4, 4))
+              (norm): LayerNorm((64,), eps=1e-05, elementwise_affine=True)
+            )
+            (drop_path1): Identity()
+            (norm2): LayerNorm((64,), eps=1e-06, elementwise_affine=True)
+            (mlp): MlpWithDepthwiseConv(
+              (fc1): Linear(in_features=64, out_features=512, bias=True)
+              (relu): Identity()
+              (dwconv): Conv2d(512, 512, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1), groups=512)
+              (act): GELU(approximate='none')
+              (fc2): Linear(in_features=512, out_features=64, bias=True)
+              (drop): Dropout(p=0.0, inplace=False)
+            )
+            (drop_path2): Identity()
+          )
+        )
+        (norm): LayerNorm((64,), eps=1e-06, elementwise_affine=True)
+      )
+      (stages_2): PyramidVisionTransformerStage(
+        (downsample): OverlapPatchEmbed(
+          (proj): Conv2d(64, 160, kernel_size=(3, 3), stride=(2, 2), padding=(1, 1))
+          (norm): LayerNorm((160,), eps=1e-05, elementwise_affine=True)
+        )
+        (blocks): ModuleList(
+          (0-1): 2 x Block(
+            (norm1): LayerNorm((160,), eps=1e-06, elementwise_affine=True)
+            (attn): Attention(
+              (q): Linear(in_features=160, out_features=160, bias=True)
+              (kv): Linear(in_features=160, out_features=320, bias=True)
+              (attn_drop): Dropout(p=0.0, inplace=False)
+              (proj): Linear(in_features=160, out_features=160, bias=True)
+              (proj_drop): Dropout(p=0.0, inplace=False)
+              (sr): Conv2d(160, 160, kernel_size=(2, 2), stride=(2, 2))
+              (norm): LayerNorm((160,), eps=1e-05, elementwise_affine=True)
+            )
+            (drop_path1): Identity()
+            (norm2): LayerNorm((160,), eps=1e-06, elementwise_affine=True)
+            (mlp): MlpWithDepthwiseConv(
+              (fc1): Linear(in_features=160, out_features=640, bias=True)
+              (relu): Identity()
+              (dwconv): Conv2d(640, 640, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1), groups=640)
+              (act): GELU(approximate='none')
+              (fc2): Linear(in_features=640, out_features=160, bias=True)
+              (drop): Dropout(p=0.0, inplace=False)
+            )
+            (drop_path2): Identity()
+          )
+        )
+        (norm): LayerNorm((160,), eps=1e-06, elementwise_affine=True)
+      )
+      (stages_3): PyramidVisionTransformerStage(
+        (downsample): OverlapPatchEmbed(
+          (proj): Conv2d(160, 256, kernel_size=(3, 3), stride=(2, 2), padding=(1, 1))
+          (norm): LayerNorm((256,), eps=1e-05, elementwise_affine=True)
+        )
+        (blocks): ModuleList(
+          (0-1): 2 x Block(
+            (norm1): LayerNorm((256,), eps=1e-06, elementwise_affine=True)
+            (attn): Attention(
+              (q): Linear(in_features=256, out_features=256, bias=True)
+              (kv): Linear(in_features=256, out_features=512, bias=True)
+              (attn_drop): Dropout(p=0.0, inplace=False)
+              (proj): Linear(in_features=256, out_features=256, bias=True)
+              (proj_drop): Dropout(p=0.0, inplace=False)
+            )
+            (drop_path1): Identity()
+            (norm2): LayerNorm((256,), eps=1e-06, elementwise_affine=True)
+            (mlp): MlpWithDepthwiseConv(
+              (fc1): Linear(in_features=256, out_features=1024, bias=True)
+              (relu): Identity()
+              (dwconv): Conv2d(1024, 1024, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1), groups=1024)
+              (act): GELU(approximate='none')
+              (fc2): Linear(in_features=1024, out_features=256, bias=True)
+              (drop): Dropout(p=0.0, inplace=False)
+            )
+            (drop_path2): Identity()
+          )
+        )
+        (norm): LayerNorm((256,), eps=1e-06, elementwise_affine=True)
+      )
+    )
+    (pvt_project): Conv2d(512, 256, kernel_size=(1, 1), stride=(1, 1))
+  )
+  (embed_weather): Mlp(
+    (fc1): Linear(in_features=24, out_features=256, bias=True)
+    (act): GELU(approximate='none')
+    (drop1): Dropout(p=0.0, inplace=False)
+    (fc2): Linear(in_features=256, out_features=256, bias=True)
+    (drop2): Dropout(p=0.0, inplace=False)
+  )
+  (blocks): ModuleList(
+    (0-2): 3 x Block(
+      (norm1): LayerNorm((256,), eps=1e-05, elementwise_affine=True)
+      (attn): Attention(
+        (qkv): Linear(in_features=256, out_features=768, bias=True)
+        (q_norm): Identity()
+        (k_norm): Identity()
+        (attn_drop): Dropout(p=0.0, inplace=False)
+        (proj): Linear(in_features=256, out_features=256, bias=True)
+        (proj_drop): Dropout(p=0.0, inplace=False)
+      )
+      (ls1): Identity()
+      (norm2): LayerNorm((256,), eps=1e-05, elementwise_affine=True)
+      (mlp): Mlp(
+        (fc1): Linear(in_features=256, out_features=1024, bias=True)
+        (act): GELU(approximate='none')
+        (drop1): Dropout(p=0.0, inplace=False)
+        (fc2): Linear(in_features=1024, out_features=256, bias=True)
+        (drop2): Dropout(p=0.0, inplace=False)
+      )
+      (ls2): Identity()
+    )
+  )
+  (head): Mlp(
+    (fc1): Linear(in_features=256, out_features=256, bias=True)
+    (act): GELU(approximate='none')
+    (drop1): Dropout(p=0.0, inplace=False)
+    (fc2): Linear(in_features=256, out_features=16, bias=True)
+    (drop2): Dropout(p=0.0, inplace=False)
+  )
+)

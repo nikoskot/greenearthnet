@@ -359,4 +359,4 @@ if __name__ == "__main__":
     )
 
     dataset = Path(args.score_dir).stem
-    summarize_scores(args.score_dir, compare_dir=Path(args.compare_dir) / f"{dataset}")
+    summarize_scores(args.score_dir, compare_dir=None)

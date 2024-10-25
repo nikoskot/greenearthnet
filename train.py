@@ -17,7 +17,7 @@ from pytorch_lightning.plugins import DDPPlugin
 from pytorch_lightning.strategies import DDPStrategy
 
 
-def train_model(setting_dict: dict, setting_file: str = None):
+def train_model(setting_dict: dict, setting_file: str = None, use_loan: bool = False):
     start = time.time()
 
     pl.seed_everything(setting_dict["Seed"])
@@ -31,16 +31,28 @@ def train_model(setting_dict: dict, setting_file: str = None):
     dm = DATASETS[setting_dict["Setting"]](data_params)
 
     # Model
-    model_args = [
-        "--{}={}".format(key, value) for key, value in setting_dict["Model"].items()
-    ]
-    model_parser = ArgumentParser()
-    model_parser = MODELS[setting_dict["Architecture"]].add_model_specific_args(
-        model_parser
-    )
-    model_params = model_parser.parse_args(model_args)
-    model = MODELS[setting_dict["Architecture"]](model_params)
-
+    if use_loan:
+        from contextformer_w_loan import ContextFormer
+        model_args = [
+            "--{}={}".format(key, value) for key, value in setting_dict["Model"].items()
+        ]
+        model_parser = ArgumentParser()
+        model_parser = ContextFormer.add_model_specific_args(
+            model_parser
+        )
+        model_params = model_parser.parse_args(model_args)
+        model = ContextFormer(model_params)
+    else:
+        model_args = [
+            "--{}={}".format(key, value) for key, value in setting_dict["Model"].items()
+        ]
+        model_parser = ArgumentParser()
+        model_parser = MODELS[setting_dict["Architecture"]].add_model_specific_args(
+            model_parser
+        )
+        model_params = model_parser.parse_args(model_args)
+        model = MODELS[setting_dict["Architecture"]](model_params)
+    breakpoint()
     # Task
     task_args = [
         "--{}={}".format(key, value) for key, value in setting_dict["Task"].items()
@@ -100,6 +112,12 @@ if __name__ == "__main__":
         metavar="path/to/dataset",
         help="Path where dataset is located",
     )
+    parser.add_argument(
+        "--use_loan",
+        default=False,
+        action='store_true',
+        help="If to use LOAN on the model or not",
+    )
     args = parser.parse_args()
 
     # Disabling PyTorch Lightning automatic SLURM detection
@@ -112,4 +130,4 @@ if __name__ == "__main__":
     if args.data_dir is not None:
         setting_dict["Data"]["base_dir"] = args.data_dir
 
-    train_model(setting_dict, args.setting)
+    train_model(setting_dict, args.setting, args.use_loan)
