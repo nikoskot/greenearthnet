@@ -5,7 +5,7 @@ Seed: 27
 Setting: greenearthnet
 
 Logger:
-    save_dir: "experiments/t"
+    save_dir: "experiments/trainStageLastNormLoan192"
 
 Checkpointer:
     save_top_k: 1
@@ -24,7 +24,7 @@ Data:
     train_batch_size: 16
     val_batch_size: 8
     test_batch_size: 8
-    num_workers: 32
+    num_workers: 16
     dl_cloudmask: True
     allow_fastaccess: False
     new_valset: True
@@ -59,9 +59,10 @@ Task:
 
 Model:
     patch_size: 4
-    n_image: 8
+    n_image: 5
+    n_static: 3
     n_weather: 24
-    n_hidden: 256
+    n_hidden: 192
     n_out: 1
     n_heads: 8
     depth: 3
@@ -79,3 +80,7 @@ Model:
     add_mean_ndvi: False
     pvt: True
     pvt_frozen: False
+    pvtDownsampleLoan: False
+    pvtStageLastNormLoan: True
+    pvtStageBlockNormLoan: False
+    pretrainedContextformerWeightsPath: ''

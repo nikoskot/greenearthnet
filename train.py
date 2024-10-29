@@ -52,7 +52,7 @@ def train_model(setting_dict: dict, setting_file: str = None, use_loan: bool = F
         )
         model_params = model_parser.parse_args(model_args)
         model = MODELS[setting_dict["Architecture"]](model_params)
-    breakpoint()
+    
     # Task
     task_args = [
         "--{}={}".format(key, value) for key, value in setting_dict["Task"].items()

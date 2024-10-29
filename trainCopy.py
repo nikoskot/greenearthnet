@@ -1,18 +1,26 @@
 #!/usr/bin/env python3
-"""Test Script
+"""Train Script
 """
+
+import os
+import time
 from argparse import ArgumentParser
 
 import pytorch_lightning as pl
+import yaml
 from earthnet_models_pytorch.data import DATASETS
 from earthnet_models_pytorch.model import MODELS
 from earthnet_models_pytorch.task import SpatioTemporalTask
 from earthnet_models_pytorch.utils import parse_setting
 from pytorch_lightning.callbacks import TQDMProgressBar
-from customCallbacks import InferenceTimeCallback
+from pytorch_lightning.plugins import DDPPlugin
+from pytorch_lightning.strategies import DDPStrategy
 
 
-def test_model(setting_dict: dict, checkpoint: str, use_loan: bool = False):
+def train_model(setting_dict: dict, setting_file: str = None, use_loan: bool = False, use_mamba: bool = False):
+    start = time.time()
+
+    pl.seed_everything(setting_dict["Seed"])
     # Data
     data_args = [
         "--{}={}".format(key, value) for key, value in setting_dict["Data"].items()
@@ -23,8 +31,8 @@ def test_model(setting_dict: dict, checkpoint: str, use_loan: bool = False):
     dm = DATASETS[setting_dict["Setting"]](data_params)
 
     # Model
-    if use_loan:
-        from contextformer_w_loan import ContextFormer
+    if use_mamba:
+        from contextformer_w_mamba import ContextFormer
         model_args = [
             "--{}={}".format(key, value) for key, value in setting_dict["Model"].items()
         ]
@@ -54,25 +62,39 @@ def test_model(setting_dict: dict, checkpoint: str, use_loan: bool = False):
     task_params = task_parser.parse_args(task_args)
     task = SpatioTemporalTask(model=model, hparams=task_params)
 
-    if checkpoint != "None":
-        task.load_from_checkpoint(
-            checkpoint_path=checkpoint,
-            context_length=setting_dict["Task"]["context_length"],
-            target_length=setting_dict["Task"]["target_length"],
-            model=model,
-            hparams=task_params,
-        )
+    # Logger
+    logger = pl.loggers.TensorBoardLogger(**setting_dict["Logger"])
+
+    if (
+        setting_file is not None
+        and type(logger.experiment).__name__ != "DummyExperiment"
+    ):
+        print("Copying setting yaml.")
+        os.makedirs(logger.log_dir, exist_ok=True)
+        with open(os.path.join(logger.log_dir, "setting.yaml"), "w") as fp:
+            yaml.dump(setting_dict, fp)
+
+    # Checkpoint
+    checkpoint_callback = pl.callbacks.ModelCheckpoint(**setting_dict["Checkpointer"])
 
     # Trainer
-
     trainer_dict = setting_dict["Trainer"]
-    trainer_dict["logger"] = False
-    testTimeCallback = InferenceTimeCallback()
-    trainer = pl.Trainer(callbacks=[TQDMProgressBar(refresh_rate=10), testTimeCallback], **trainer_dict)
 
-    dm.setup("test")
+    trainer = pl.Trainer(
+        logger=logger,
+        callbacks=[checkpoint_callback, TQDMProgressBar(refresh_rate=10)],
+        **trainer_dict,
+    )
 
-    trainer.test(model=task, datamodule=dm, ckpt_path=None)
+    trainer.fit(task, dm)
+
+    print(
+        f"Best model {checkpoint_callback.best_model_path} with score {checkpoint_callback.best_model_score}"
+    )
+
+    end = time.time()
+
+    print(f"Calculation done in {end - start} seconds.")
 
 
 if __name__ == "__main__":
@@ -84,23 +106,6 @@ if __name__ == "__main__":
         help="yaml with all settings",
     )
     parser.add_argument(
-        "checkpoint", type=str, metavar="path/to/checkpoint", help="checkpoint file"
-    )
-    parser.add_argument(
-        "--track",
-        type=str,
-        metavar="iid|ood|ex|sea",
-        default="ood-t_chopped",
-        help="which track to test: either iid, ood, ex or sea",
-    )
-    parser.add_argument(
-        "--pred_dir",
-        type=str,
-        default="preds/",
-        metavar="path/to/prediction/dir",
-        help="Path where to save predictions",
-    )
-    parser.add_argument(
         "--data_dir",
         type=str,
         default="data/greenearthnet/",
@@ -108,36 +113,27 @@ if __name__ == "__main__":
         help="Path where dataset is located",
     )
     parser.add_argument(
-        "--gpus",
-        type=int,
-        metavar="n gpus",
-        default=1,
-        help="how many gpus to use",
-    )
-
-    parser.add_argument(
         "--use_loan",
+        default=False,
+        action='store_true',
+        help="If to use LOAN on the model or not",
+    )
+    parser.add_argument(
+        "--use_mamba",
         default=False,
         action='store_true',
         help="If to use LOAN on the model or not",
     )
     args = parser.parse_args()
 
-    import os
+    # Disabling PyTorch Lightning automatic SLURM detection
+    # for k, v in os.environ.items():
+    #     if k.startswith("SLURM"):
+    #         del os.environ[k]
 
-    for k, v in os.environ.items():
-        if k.startswith("SLURM"):
-            del os.environ[k]
-
-    setting_dict = parse_setting(args.setting, track=args.track)
-
-    if args.pred_dir is not None:
-        setting_dict["Task"]["pred_dir"] = args.pred_dir
+    setting_dict = parse_setting(args.setting)
 
     if args.data_dir is not None:
         setting_dict["Data"]["base_dir"] = args.data_dir
 
-    if "gpus" in setting_dict["Trainer"]:
-        setting_dict["Trainer"]["gpus"] = args.gpus
-
-    test_model(setting_dict, args.checkpoint, args.use_loan)
+    train_model(setting_dict, args.setting, args.use_loan, args.use_mamba)

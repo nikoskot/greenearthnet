@@ -487,6 +487,7 @@ class PyramidVisionTransformerV2(nn.Module):
         sr_ratios = to_ntuple(num_stages)(sr_ratios)
         assert(len(embed_dims)) == num_stages
         self.feature_info = []
+        self.useLoan = pvtStageDownsampleLoan or initialDownsampleLoan or pvtStageLastNormLoan or pvtStageBlockNormLoan
 
         self.initialDownsampleLoan = initialDownsampleLoan
         self.patch_embed = OverlapPatchEmbed(
@@ -533,6 +534,7 @@ class PyramidVisionTransformerV2(nn.Module):
         self.apply(self._init_weights)
         
         if pretrainedPath is not None:
+            print("Use pretrained PVT weights.")
             pretrainedStateDict = torch.load(pretrainedPath)
             if pretrainedStateDict['patch_embed.proj.weight'].shape[1] != self.state_dict()['patch_embed.proj.weight'].shape[1]:
                 pretrainedStateDict['patch_embed.proj.weight'] = F.interpolate(pretrainedStateDict['patch_embed.proj.weight'].permute(0, 2, 3, 1), size=(pretrainedStateDict['patch_embed.proj.weight'].shape[-2], self.state_dict()['patch_embed.proj.weight'].shape[1]), mode='nearest').permute(0, 3, 1, 2)
@@ -544,6 +546,20 @@ class PyramidVisionTransformerV2(nn.Module):
                 num = int(match.group(1))
                 pretrainedStateDict["stages." + str(num) + k.removeprefix("stages_" + str(num))] = pretrainedStateDict[k]
                 del pretrainedStateDict[k]
+            
+            if embed_dims[-1] != 256:
+                for k in list(pretrainedStateDict.keys()):
+                    if k in list(self.state_dict().keys()):
+                        if pretrainedStateDict[k].shape != self.state_dict()[k].shape:
+                            if len(pretrainedStateDict[k].shape) == 1:
+                                pretrainedStateDict[k] = F.interpolate(pretrainedStateDict[k].unsqueeze(0).unsqueeze(0), size=self.state_dict()[k].shape[0], mode='linear').squeeze(0).squeeze(0)
+                            elif len(pretrainedStateDict[k].shape) == 2:
+                                pretrainedStateDict[k] = F.interpolate(pretrainedStateDict[k].unsqueeze(0).unsqueeze(0), size=(self.state_dict()[k].shape[0], self.state_dict()[k].shape[1]), mode='nearest').squeeze(0).squeeze(0)
+                            elif len(pretrainedStateDict[k].shape) == 3:
+                                pretrainedStateDict[k] = F.interpolate(pretrainedStateDict[k], size=(self.state_dict()[k].shape[0], self.state_dict()[k].shape[1], self.state_dict()[k].shape[2]), mode='nearest')
+                            elif len(pretrainedStateDict[k].shape) == 4:
+                                pretrainedStateDict[k] = F.interpolate(pretrainedStateDict[k].permute(2,3,0,1), size=(self.state_dict()[k].shape[0], self.state_dict()[k].shape[1]), mode='nearest').permute(2,3,0,1)
+
             self.load_state_dict(pretrainedStateDict, strict=False)
 
     def _init_weights(self, m):
@@ -590,7 +606,7 @@ class PyramidVisionTransformerV2(nn.Module):
 
     def forward_features(self, x, staticData=None):
         x_out = []
-        if self.initialDownsampleLoan:
+        if self.useLoan:
             x = self.patch_embed(x, staticData[0])
             for i, s in enumerate(self.stages):
                 x = s(x, staticData[i])

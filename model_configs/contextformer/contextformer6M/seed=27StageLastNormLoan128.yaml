@@ -5,7 +5,7 @@ Seed: 27
 Setting: greenearthnet
 
 Logger:
-    save_dir: "experiments/trainReproduction2"
+    save_dir: "experiments/trainStageLastNormLoan128"
 
 Checkpointer:
     save_top_k: 1
@@ -13,7 +13,7 @@ Checkpointer:
     every_n_epochs: 1
 
 Trainer:
-    gpus: 1
+    gpus: 2
     strategy: 'ddp'
     log_every_n_steps: 32
     max_epochs: 100
@@ -62,7 +62,7 @@ Model:
     n_image: 5
     n_static: 3
     n_weather: 24
-    n_hidden: 256
+    n_hidden: 128
     n_out: 1
     n_heads: 8
     depth: 3
@@ -80,6 +80,7 @@ Model:
     add_mean_ndvi: False
     pvt: True
     pvt_frozen: False
-    pvtDownsampleLoan: True
+    pvtDownsampleLoan: False
     pvtStageLastNormLoan: True
-    pvtStageBlockNormLoan: True
+    pvtStageBlockNormLoan: False
+    pretrainedContextformerWeightsPath: ''

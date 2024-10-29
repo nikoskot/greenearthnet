@@ -13,7 +13,7 @@ Checkpointer:
     every_n_epochs: 1
 
 Trainer:
-    gpus: 2
+    gpus: 1
     strategy: 'ddp'
     log_every_n_steps: 32
     max_epochs: 100
@@ -24,7 +24,7 @@ Data:
     train_batch_size: 16
     val_batch_size: 8
     test_batch_size: 8
-    num_workers: 32
+    num_workers: 16
     dl_cloudmask: True
     allow_fastaccess: False
     new_valset: True
@@ -59,7 +59,8 @@ Task:
 
 Model:
     patch_size: 4
-    n_image: 8
+    n_image: 5
+    n_static: 3
     n_weather: 24
     n_hidden: 256
     n_out: 1
@@ -79,3 +80,7 @@ Model:
     add_mean_ndvi: False
     pvt: True
     pvt_frozen: False
+    pvtDownsampleLoan: True
+    pvtStageLastNormLoan: True
+    pvtStageBlockNormLoan: True
+    pretrainedContextformerWeightsPath: '/home/nikoskot/greenearthnet/model_weights/contextformer/contextformer6M/seed=27.ckpt'
