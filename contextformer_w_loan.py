@@ -206,7 +206,7 @@ class PVT_embed(nn.Module):
                                               initialDownsampleLoan=pvtDownsampleLoan,
                                               pvtStageLastNormLoan=pvtStageLastNormLoan,
                                               pvtStageBlockNormLoan=pvtStageBlockNormLoan,
-                                              pretrainedPath="/home/nikoskot/greenearthnet/pvt.pt" if pretrained else None)
+                                              pretrainedPath="./pvt.pt" if pretrained else None)
         if frozen:
             for param in self.pvt.parameters():
                 param.requires_grad = False
