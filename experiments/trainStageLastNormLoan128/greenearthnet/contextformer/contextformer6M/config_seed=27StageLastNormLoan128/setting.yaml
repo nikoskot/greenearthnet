@@ -20,8 +20,8 @@ Data:
   val_split_seed: 27
 Logger:
   name: contextformer6M
-  save_dir: experiments/trainStageBlockNormLoan/greenearthnet/contextformer
-  version: config_seed=27StageBlockNormLoan
+  save_dir: experiments/trainStageLastNormLoan128/greenearthnet/contextformer
+  version: config_seed=27StageLastNormLoan128
 Model:
   add_last_ndvi: true
   add_mean_ndvi: false
@@ -32,7 +32,7 @@ Model:
   mlp_ratio: 4.0
   mtm: true
   n_heads: 8
-  n_hidden: 256
+  n_hidden: 128
   n_image: 5
   n_out: 1
   n_static: 3
@@ -47,8 +47,8 @@ Model:
   pretrainedContextformerWeightsPath: ''
   pvt: true
   pvtDownsampleLoan: false
-  pvtStageBlockNormLoan: true
-  pvtStageLastNormLoan: false
+  pvtStageBlockNormLoan: false
+  pvtStageLastNormLoan: true
   pvt_frozen: false
   target_length: 20
 Seed: 27

@@ -83,3 +83,4 @@ Model:
     pvtDownsampleLoan: False
     pvtStageLastNormLoan: False
     pvtStageBlockNormLoan: True
+    pretrainedContextformerWeightsPath: ''

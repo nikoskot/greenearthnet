@@ -44,7 +44,6 @@ Model:
   predict_delta0: false
   predict_delta_avg: false
   predict_delta_max: false
-  pretrainedContextformerWeightsPath: ''
   pvt: true
   pvtDownsampleLoan: false
   pvtStageBlockNormLoan: true

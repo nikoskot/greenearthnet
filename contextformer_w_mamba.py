@@ -10,7 +10,8 @@ from earthnet_models_pytorch.model.layer_utils import inverse_permutation
 from earthnet_models_pytorch.utils import str2bool
 from torch.jit import Final
 from torch.nn import functional as F
-from mamba_ssm import Mamba2
+from mamba_ssm import Mamba
+from pvt_v2_w_mamba import PyramidVisionTransformerV2
 
 
 class Attention(nn.Module):
@@ -183,19 +184,33 @@ def get_sinusoid_encoding_table(positions, d_hid, T=1000):
 
 class PVT_embed(nn.Module):
 
-    def __init__(self, in_channels, out_channels, pretrained=True, frozen=False):
+    def __init__(self, in_channels, out_channels, pretrained=True, frozen=False, useMambaOnPVT=True):
         super().__init__()
 
-        self.pvt = timm.create_model(
-            "pvt_v2_b0.in1k",
-            pretrained=pretrained,
-            features_only=True,
-            in_chans=in_channels,
-        )
+        # self.pvt = timm.create_model(
+        #     "pvt_v2_b0.in1k",
+        #     pretrained=pretrained,
+        #     features_only=True,
+        #     in_chans=in_channels,
+        # )
+        if out_channels == 256:
+            embed_dims = (32,64,160,256)
+        elif out_channels == 192:
+            embed_dims = (24,48,120,192)
+        else:
+            embed_dims = (16,32,80,128)
+        self.pvt = PyramidVisionTransformerV2(in_chans=in_channels,
+                                              depths=(2,2,2,2),
+                                              embed_dims=embed_dims,
+                                              num_heads=(1,2,5,8),
+                                              pretrainedPath="./pvt.pt" if pretrained else None,
+                                              useMamba=useMambaOnPVT)
         if frozen:
-            timm.utils.freeze(self.pvt)
+            for param in self.pvt.parameters():
+                param.requires_grad = False
+            # timm.utils.freeze(self.pvt)
         self.pvt_project = nn.Conv2d(
-            in_channels=512,
+            in_channels=2*out_channels,
             out_channels=out_channels,
             kernel_size=1,
             padding=0,
@@ -229,13 +244,15 @@ class ContextFormer(nn.Module):
         super().__init__()
 
         self.hparams = hparams
+        self.pretrainedContextformerWeightsPath = self.hparams.pretrainedContextformerWeightsPath
 
         if self.hparams.pvt:
             self.embed_images = PVT_embed(
                 in_channels=self.hparams.n_image,
                 out_channels=self.hparams.n_hidden,
-                pretrained=True,
+                pretrained=self.pretrainedContextformerWeightsPath=='',
                 frozen=self.hparams.pvt_frozen,
+                useMambaOnPVT=self.hparams.useMambaOnPVT
             )
         else:
             self.embed_images = Mlp(
@@ -256,18 +273,13 @@ class ContextFormer(nn.Module):
 
         self.blocks = nn.ModuleList(
             [
-                # Block(
-                #     self.hparams.n_hidden,
-                #     self.hparams.n_heads,
-                #     self.hparams.mlp_ratio,
-                #     qkv_bias=True,
-                #     norm_layer=nn.LayerNorm,
-                # )
-                Mamba2(d_model=self.hparams.n_hidden, 
-                      d_state=64,
-                      d_conv=4,
-                      expand=2,
-                      )
+                Block(
+                    self.hparams.n_hidden,
+                    self.hparams.n_heads,
+                    self.hparams.mlp_ratio,
+                    qkv_bias=True,
+                    norm_layer=nn.LayerNorm,
+                )
                 for _ in range(self.hparams.depth)
             ]
         )
@@ -288,6 +300,40 @@ class ContextFormer(nn.Module):
                 * self.hparams.patch_size
                 * self.hparams.patch_size,
             )
+        
+        if self.pretrainedContextformerWeightsPath != '':
+            print("Use pretrained ContextFormer weights.")
+            checkpoint = torch.load(self.pretrainedContextformerWeightsPath)['state_dict']
+
+            for k in list(checkpoint.keys()):
+                if k.startswith("model."):
+                    newKey = k.removeprefix("model.")
+                    checkpoint[newKey] = checkpoint[k]
+                    del checkpoint[k]
+
+            for k in list(checkpoint.keys()):
+                if "stages_" in k:
+                    newKey = k.replace("stages_", "stages.")
+                    checkpoint[newKey] = checkpoint[k]
+                    del checkpoint[k]
+            
+            if checkpoint['embed_images.pvt.patch_embed.proj.weight'].shape[1] != self.state_dict()['embed_images.pvt.patch_embed.proj.weight'].shape[1]:
+                checkpoint['embed_images.pvt.patch_embed.proj.weight'] = F.interpolate(checkpoint['embed_images.pvt.patch_embed.proj.weight'].permute(0, 2, 3, 1), size=(checkpoint['embed_images.pvt.patch_embed.proj.weight'].shape[-2], self.state_dict()['embed_images.pvt.patch_embed.proj.weight'].shape[1]), mode='nearest').permute(0, 3, 1, 2)
+            
+            if self.hparams.n_hidden != 256:
+                for k in list(checkpoint.keys()):
+                    if k in list(self.state_dict().keys()):
+                        if checkpoint[k].shape != self.state_dict()[k].shape:
+                            if len(checkpoint[k].shape) == 1:
+                                checkpoint[k] = F.interpolate(checkpoint[k].unsqueeze(0).unsqueeze(0), size=self.state_dict()[k].shape[0], mode='linear').squeeze(0).squeeze(0)
+                            elif len(checkpoint[k].shape) == 2:
+                                checkpoint[k] = F.interpolate(checkpoint[k].unsqueeze(0).unsqueeze(0), size=(self.state_dict()[k].shape[0], self.state_dict()[k].shape[1]), mode='nearest').squeeze(0).squeeze(0)
+                            elif len(checkpoint[k].shape) == 3:
+                                checkpoint[k] = F.interpolate(checkpoint[k], size=(self.state_dict()[k].shape[0], self.state_dict()[k].shape[1], self.state_dict()[k].shape[2]), mode='nearest')
+                            elif len(checkpoint[k].shape) == 4:
+                                checkpoint[k] = F.interpolate(checkpoint[k].permute(2,3,0,1), size=(self.state_dict()[k].shape[0], self.state_dict()[k].shape[1]), mode='nearest').permute(2,3,0,1)
+
+            self.load_state_dict(checkpoint, strict=False)
 
     @staticmethod
     def add_model_specific_args(
@@ -326,6 +372,8 @@ class ContextFormer(nn.Module):
         parser.add_argument("--add_last_ndvi", type=str2bool, default=False)
         parser.add_argument("--add_mean_ndvi", type=str2bool, default=False)
         parser.add_argument("--spatial_shuffle", type=str2bool, default=False)
+        parser.add_argument("--useMambaOnPVT", type=str2bool, default=False)
+        parser.add_argument("--pretrainedContextformerWeightsPath", type=str, default='')
 
         return parser
 

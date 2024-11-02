@@ -20,8 +20,8 @@ Data:
   val_split_seed: 27
 Logger:
   name: contextformer6M
-  save_dir: experiments/trainStageBlockNormLoan/greenearthnet/contextformer
-  version: config_seed=27StageBlockNormLoan
+  save_dir: experiments/trainStageLastNormLoanPretrainedSmallerLr/greenearthnet/contextformer
+  version: config_seed=27StageLastNormLoanPretrained
 Model:
   add_last_ndvi: true
   add_mean_ndvi: false
@@ -44,11 +44,11 @@ Model:
   predict_delta0: false
   predict_delta_avg: false
   predict_delta_max: false
-  pretrainedContextformerWeightsPath: ''
+  pretrainedContextformerWeightsPath: /home/nikoskot/greenearthnet/model_weights/contextformer/contextformer6M/seed=27.ckpt
   pvt: true
   pvtDownsampleLoan: false
-  pvtStageBlockNormLoan: true
-  pvtStageLastNormLoan: false
+  pvtStageBlockNormLoan: false
+  pvtStageLastNormLoan: true
   pvt_frozen: false
   target_length: 20
 Seed: 27
@@ -88,8 +88,8 @@ Task:
         betas:
         - 0.9
         - 0.999
-        lr: 4.0e-05
-      lr_per_sample: 1.25e-06
+        lr: 2.0e-05
+      lr_per_sample: 6.25e-07
       name: AdamW
   setting: greenearthnet
   target_length: 20

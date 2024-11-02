@@ -252,25 +252,21 @@ class StaticDataEncoder(nn.Module):
 
         # self.dims = [32, 64, 160, 256]
         
-        self.convs = nn.ModuleList([nn.Conv2d(in_channels=in_channels, out_channels=self.dims[0], kernel_size=7, stride=4, padding=(3, 3))])
-        self.norm = nn.LayerNorm(self.dims[0])
+        self.convs = nn.ModuleList([])
         for i, d in enumerate(self.dims):
-            if i > 0:
-                self.convs.append(nn.Conv2d(in_channels=self.dims[i-1], out_channels=self.dims[i], kernel_size=3, stride=2, padding=(1, 1)))
+            self.convs.append(nn.Conv2d(in_channels=in_channels, out_channels=self.dims[i], kernel_size=3, stride=1, padding=(0, 0)))
 
     def forward(self, x):
-        x_out = []
+        # x_out = []
 
-        for i, c in enumerate(self.convs):
-            x = c(x)
-            if i == 0:
-                x = x.permute(0, 2, 3, 1)
-                x = self.norm(x)
-                x = x.permute(0, 3, 1, 2)
-            x = F.relu(x)
-            x_out.append(x)
+        # for i, c in enumerate(self.convs):
+        #     x_out.append(F.relu(c(x)))
+        x0 = F.relu(self.convs[0](x))
+        x1 = F.relu(self.convs[1](x))
+        x2 = F.relu(self.convs[2](x))
+        x3 = F.relu(self.convs[3](x))
 
-        return x_out
+        return [x0, x1, x2, x3]
 
 
 class ContextFormer(nn.Module):

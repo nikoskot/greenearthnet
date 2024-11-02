@@ -17,7 +17,7 @@ from pytorch_lightning.plugins import DDPPlugin
 from pytorch_lightning.strategies import DDPStrategy
 
 
-def train_model(setting_dict: dict, setting_file: str = None, use_loan: bool = False):
+def train_model(setting_dict: dict, setting_file: str = None, use_loan: bool = False, use_mamba: bool = False):
     start = time.time()
 
     pl.seed_everything(setting_dict["Seed"])
@@ -42,6 +42,17 @@ def train_model(setting_dict: dict, setting_file: str = None, use_loan: bool = F
         )
         model_params = model_parser.parse_args(model_args)
         model = ContextFormer(model_params)
+    elif use_mamba:
+        from contextformer_w_mamba import ContextFormer
+        model_args = [
+            "--{}={}".format(key, value) for key, value in setting_dict["Model"].items()
+        ]
+        model_parser = ArgumentParser()
+        model_parser = ContextFormer.add_model_specific_args(
+            model_parser
+        )
+        model_params = model_parser.parse_args(model_args)
+        model = ContextFormer(model_params)
     else:
         model_args = [
             "--{}={}".format(key, value) for key, value in setting_dict["Model"].items()
@@ -52,7 +63,7 @@ def train_model(setting_dict: dict, setting_file: str = None, use_loan: bool = F
         )
         model_params = model_parser.parse_args(model_args)
         model = MODELS[setting_dict["Architecture"]](model_params)
-    
+        
     # Task
     task_args = [
         "--{}={}".format(key, value) for key, value in setting_dict["Task"].items()
@@ -118,6 +129,12 @@ if __name__ == "__main__":
         action='store_true',
         help="If to use LOAN on the model or not",
     )
+    parser.add_argument(
+        "--use_mamba",
+        default=False,
+        action='store_true',
+        help="If to use LOAN on the model or not",
+    )
     args = parser.parse_args()
 
     # Disabling PyTorch Lightning automatic SLURM detection
@@ -130,4 +147,4 @@ if __name__ == "__main__":
     if args.data_dir is not None:
         setting_dict["Data"]["base_dir"] = args.data_dir
 
-    train_model(setting_dict, args.setting, args.use_loan)
+    train_model(setting_dict, args.setting, args.use_loan, args.use_mamba)

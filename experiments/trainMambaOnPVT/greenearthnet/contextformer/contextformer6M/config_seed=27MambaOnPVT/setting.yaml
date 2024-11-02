@@ -20,8 +20,8 @@ Data:
   val_split_seed: 27
 Logger:
   name: contextformer6M
-  save_dir: experiments/trainStageBlockNormLoan/greenearthnet/contextformer
-  version: config_seed=27StageBlockNormLoan
+  save_dir: experiments/trainMambaOnPVT/greenearthnet/contextformer
+  version: config_seed=27MambaOnPVT
 Model:
   add_last_ndvi: true
   add_mean_ndvi: false
@@ -33,9 +33,8 @@ Model:
   mtm: true
   n_heads: 8
   n_hidden: 256
-  n_image: 5
+  n_image: 8
   n_out: 1
-  n_static: 3
   n_weather: 24
   p_mtm: 0.7
   p_use_mtm: 0.5
@@ -46,11 +45,9 @@ Model:
   predict_delta_max: false
   pretrainedContextformerWeightsPath: ''
   pvt: true
-  pvtDownsampleLoan: false
-  pvtStageBlockNormLoan: true
-  pvtStageLastNormLoan: false
   pvt_frozen: false
   target_length: 20
+  useMambaOnPVT: true
 Seed: 27
 Setting: greenearthnet
 Task:

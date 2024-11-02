@@ -23,6 +23,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.utils.checkpoint as checkpoint
 import re
+from mamba_ssm import Mamba, Mamba2
 
 from timm.data import IMAGENET_DEFAULT_MEAN, IMAGENET_DEFAULT_STD
 from timm.layers import DropPath, to_2tuple, to_ntuple, trunc_normal_, LayerNorm, use_fused_attn
@@ -31,139 +32,6 @@ from timm.layers import DropPath, to_2tuple, to_ntuple, trunc_normal_, LayerNorm
 
 __all__ = ['PyramidVisionTransformerV2']
 
-class LOAN(nn.Module):
-
-    """ Location-aware Adaptive Normalization layer """
-
-    def __init__(self, in_channels: int, cond_channels: int, free_norm: str = 'LayerNorm',
-                 kernel_size: int = 3, norm: bool = True):
-        super(LOAN, self).__init__()
-
-        """
-        Parameters
-        ----------
-        in_channels : int
-            number of input channels
-        cond_channels : int
-            number of channels for conditional map
-        free_norm : int (default batch)
-            type of normalization to be used for the modulated map
-        kernel_size : int (default 3)
-            kernel size of output channels 
-        norm : bool (default True)
-            option to do normalization of the modulated map
-        """
-
-        self.in_channels = in_channels
-        self.cond_channels = cond_channels
-        self.kernel_size = kernel_size
-        self.norm = norm
-        self.k_channels = cond_channels
-
-        if norm:
-            if free_norm == 'BatchNorm':
-                self.free_norm = nn.BatchNorm3d(self.in_channels, affine=False)
-            elif free_norm == 'LayerNorm':
-                self.free_norm = nn.LayerNorm(self.in_channels, elementwise_affine=False)
-            else:
-                raise ValueError('%s is not a recognized free_norm type in SPADE' % free_norm)
-
-        # self.mlp = nn.Sequential(
-        #    nn.Conv2d(in_channels=self.cond_channels, out_channels=self.k_channels, kernel_size=self.kernel_size,
-        #             padding=self.kernel_size//2, padding_mode='replicate'),
-        #    nn.ReLU(inplace=True)
-        #    )
-
-        # projection layers
-        # self.mlp_gamma = nn.Conv2d(self.k_channels, self.in_channels, kernel_size=self.kernel_size,
-        #                            padding=self.kernel_size // 2)
-        self.mlp_beta = nn.Conv2d(self.k_channels, self.in_channels, kernel_size=self.kernel_size,
-                                  padding=self.kernel_size // 2)
-
-        # initialize projection layers
-        # self.mlp.apply(self.init_weights)
-        self.mlp_beta.apply(self.init_weights)
-        # self.mlp_gamma.apply(self.init_weights)
-
-        # normalization for the conditional map
-        # self.free_norm_cond = torch.nn.BatchNorm2d(cond_channels, affine=False)
-        if free_norm == 'BatchNorm':
-            self.free_norm_cond = torch.nn.BatchNorm2d(cond_channels, affine=False)
-        elif free_norm == 'LayerNorm':
-            self.free_norm_cond = nn.LayerNorm(cond_channels, elementwise_affine=False)
-
-    def init_weights(self, m):
-        # classname = m.__class__.__name__
-        if isinstance(m, torch.nn.Conv2d):
-            torch.nn.init.normal_(m.weight.data, 0.0, 0.01)
-            if m.bias is not None:
-                torch.nn.init.constant_(m.bias.data, 0.0)
-
-    def generate_one_hot(self, labels: torch.Tensor):
-
-        """
-        Convert the semantic map into one-hot encoded
-        This method can be used for the CORINE land cover data_m
-        """
-
-        con_map = torch.nn.functional.one_hot(labels, num_classes=10)
-        con_map = torch.permute(con_map, (0, 3, 2, 1))
-        return con_map.float()
-
-    def forward(self, x: torch.Tensor, con_map: torch.Tensor):
-
-        """
-        input tensor x [N*D, W, H, K]
-        conditional map tensor con_map [N, W, H, K]
-        outpu: [N*D, W, H, K]
-        """
-        _, W, H, K = x.shape
-
-        # parameter-free normalized map
-        if self.norm:
-            # if isinstance(self.free_norm, nn.LayerNorm):
-                # x = x.permute(0, 2, 3, 1)   # N*D, W, H, K
-            normalized = self.free_norm(x)
-                # normalized = normalized.permute(0, 3, 1, 2) # N*D, K, W, H
-            # elif isinstance(self.free_norm, nn.BatchNorm3d):
-                # normalized = self.free_norm(x)
-        else:
-            normalized = x
-
-        # used for data_m
-        # con_map = self.generate_one_hot(con_map)
-        # con_map = con_map.float()
-
-        # produce scaling and bias conditioned on semantic map
-        # con_map = F.interpolate(con_map, size=x.size()[-2:], mode='nearest')
-
-        # normalize the conditional map
-        # actv = self.free_norm_cond(con_map)
-        # if isinstance(self.free_norm_cond, nn.LayerNorm):
-            # con_map = con_map.permute(0, 2, 3, 1)   # N, W, H, K
-        actv = self.free_norm_cond(con_map)
-            # actv = actv.permute(0, 3, 1, 2) # N, K, W, H
-        # elif isinstance(self.free_norm_cond, nn.BatchNorm2d):
-            # actv = self.free_norm_cond(con_map)
-        actv = nn.functional.relu(actv)
-
-        # actv = self.mlp(con_map)
-        # gamma = self.mlp_gamma(actv.permute(0, 3, 1, 2))
-        beta = self.mlp_beta(actv.permute(0, 3, 1, 2))
-
-        # Interpolate static data to match the spatial dimension of the input
-        # gamma = F.interpolate(gamma, size=(W, H), mode='nearest').permute(0, 2, 3, 1)
-        beta = F.interpolate(beta, size=(W, H), mode='nearest').permute(0, 2, 3, 1)
-
-        normalized = normalized.reshape(beta.shape[0], -1, W, H, K)
-
-        # apply scale and bias after duplication along the D time dimension
-        # out = normalized * (1 + gamma[:, None, :, :, :]) + beta[:, None, :, :, :]
-        out = normalized + beta[:, None, :, :, :]
-
-        out = out.reshape(-1, W, H, K)
-        return out
-    
 
 class MlpWithDepthwiseConv(nn.Module):
     def __init__(
@@ -293,31 +161,31 @@ class Block(nn.Module):
             drop_path=0.,
             act_layer=nn.GELU,
             norm_layer=LayerNorm,
-            loan=False,
+            useMamba=True
     ):
         super().__init__()
-        self.useLoan = loan
-        if (loan):
-            self.loan1 = LOAN(in_channels=dim, cond_channels=dim, free_norm='LayerNorm', norm=True)
+        self.norm1 = norm_layer(dim)
+        self.useMamba = useMamba
+        if useMamba:
+            self.mamba_attn = Mamba(
+                d_model=dim, # Model dimension d_model
+                d_state=16,  # SSM state expansion factor
+                d_conv=4,    # Local convolution width
+                expand=2,    # Block expansion factor
+            )
         else:
-            self.norm1 = norm_layer(dim)
-        self.attn = Attention(
-            dim,
-            num_heads=num_heads,
-            sr_ratio=sr_ratio,
-            linear_attn=linear_attn,
-            qkv_bias=qkv_bias,
-            attn_drop=attn_drop,
-            proj_drop=proj_drop,
-        )
+            self.attn = Attention(
+                dim,
+                num_heads=num_heads,
+                sr_ratio=sr_ratio,
+                linear_attn=linear_attn,
+                qkv_bias=qkv_bias,
+                attn_drop=attn_drop,
+                proj_drop=proj_drop,
+            )
         self.drop_path1 = DropPath(drop_path) if drop_path > 0. else nn.Identity()
 
-        # if (loan):
-        #     self.loan2 = LOAN(in_channels=dim, cond_channels=dim, free_norm='LayerNorm', norm=True)
-        # else:
-        #     self.norm2 = norm_layer(dim)
-        if (not loan):
-            self.norm2 = norm_layer(dim)
+        self.norm2 = norm_layer(dim)
         self.mlp = MlpWithDepthwiseConv(
             in_features=dim,
             hidden_features=int(dim * mlp_ratio),
@@ -327,20 +195,12 @@ class Block(nn.Module):
         )
         self.drop_path2 = DropPath(drop_path) if drop_path > 0. else nn.Identity()
 
-    def forward(self, x, feat_size: List[int], staticData=None):
-        if (self.useLoan):
-            staticData = staticData.permute(0, 2, 3, 1)
-
-            x = x.reshape(x.shape[0], feat_size[0], feat_size[1], x.shape[2])
-            x = self.loan1(x, staticData).reshape(x.shape[0], feat_size[0]*feat_size[1], x.shape[3])
-            x = x + self.drop_path1(self.attn(x, feat_size))
-
-            x = x.reshape(x.shape[0], feat_size[0], feat_size[1], x.shape[2])
-            x = self.loan1(x, staticData).reshape(x.shape[0], feat_size[0]*feat_size[1], x.shape[3])
-            x = x + self.drop_path2(self.mlp(x, feat_size))
+    def forward(self, x, feat_size: List[int]):
+        if self.useMamba:
+            x = x + self.drop_path1(self.mamba_attn(self.norm1(x)))
         else:
             x = x + self.drop_path1(self.attn(self.norm1(x), feat_size))
-            x = x + self.drop_path2(self.mlp(self.norm2(x), feat_size))
+        x = x + self.drop_path2(self.mlp(self.norm2(x), feat_size))
 
         return x
 
@@ -348,29 +208,20 @@ class Block(nn.Module):
 class OverlapPatchEmbed(nn.Module):
     """ Image to Patch Embedding
     """
-    def __init__(self, patch_size=7, stride=4, in_chans=3, embed_dim=768, loan=False):
+    def __init__(self, patch_size=7, stride=4, in_chans=3, embed_dim=768):
         super().__init__()
-        self.useLoan = loan
         patch_size = to_2tuple(patch_size)
         assert max(patch_size) > stride, "Set larger patch_size than stride"
         self.patch_size = patch_size
         self.proj = nn.Conv2d(
             in_chans, embed_dim, patch_size,
             stride=stride, padding=(patch_size[0] // 2, patch_size[1] // 2))
-        if self.useLoan:
-            self.loan = LOAN(in_channels=embed_dim, cond_channels=embed_dim, free_norm='LayerNorm', norm=True)
-        else:
-            self.norm = nn.LayerNorm(embed_dim)
+        self.norm = nn.LayerNorm(embed_dim)
 
-    def forward(self, x, staticData=None):
+    def forward(self, x):
         x = self.proj(x)
         x = x.permute(0, 2, 3, 1)
-        if staticData is not None:
-            staticData = staticData.permute(0, 2, 3, 1)
-        if self.useLoan:
-            x = self.loan(x, staticData)
-        else:
-            x = self.norm(x)
+        x = self.norm(x)
         return x
 
 
@@ -390,20 +241,17 @@ class PyramidVisionTransformerStage(nn.Module):
             attn_drop: float = 0.,
             drop_path: Union[List[float], float] = 0.0,
             norm_layer: Callable = LayerNorm,
-            downsampleLoan = False,
-            pvtStageLastNormLoan = False,
-            pvtStageBlockNormLoan = False 
+            useMamba=True,
     ):
         super().__init__()
         self.grad_checkpointing = False
-        self.downsampleLoan = downsampleLoan
+
         if downsample:
             self.downsample = OverlapPatchEmbed(
                 patch_size=3,
                 stride=2,
                 in_chans=dim,
                 embed_dim=dim_out,
-                loan=downsampleLoan
             )
         else:
             assert dim == dim_out
@@ -420,23 +268,16 @@ class PyramidVisionTransformerStage(nn.Module):
             attn_drop=attn_drop,
             drop_path=drop_path[i] if isinstance(drop_path, list) else drop_path,
             norm_layer=norm_layer,
-            loan=pvtStageBlockNormLoan,
+            useMamba=useMamba,
         ) for i in range(depth)])
 
-        self.pvtStageLastNormLoan = pvtStageLastNormLoan
-        if (pvtStageLastNormLoan):
-            self.loan = LOAN(in_channels=dim_out, cond_channels=dim_out, free_norm='LayerNorm', norm=True)
-        else:
-            self.norm = norm_layer(dim_out)
+        self.norm = norm_layer(dim_out)
 
-    def forward(self, x, staticData=None):
+    def forward(self, x):
         # x is either B, C, H, W (if downsample) or B, H, W, C if not
         if self.downsample is not None:
-            if self.downsampleLoan:
-                x = self.downsample(x, staticData)
-            else:
-                # input to downsample is B, C, H, W
-                x = self.downsample(x)  # output B, H, W, C
+            # input to downsample is B, C, H, W
+            x = self.downsample(x)  # output B, H, W, C
         B, H, W, C = x.shape
         feat_size = (H, W)
         x = x.reshape(B, -1, C)
@@ -444,13 +285,8 @@ class PyramidVisionTransformerStage(nn.Module):
             if self.grad_checkpointing and not torch.jit.is_scripting():
                 x = checkpoint.checkpoint(blk, x, feat_size)
             else:
-                x = blk(x, feat_size, staticData)
-        if self.pvtStageLastNormLoan:
-            x = x.reshape(x.shape[0], feat_size[0], feat_size[1], x.shape[2])
-            staticData = staticData.permute(0, 2, 3, 1)
-            x = self.loan(x, staticData).reshape(x.shape[0], feat_size[0]*feat_size[1], x.shape[3])
-        else:
-            x = self.norm(x)
+                x = blk(x, feat_size)
+        x = self.norm(x)
         x = x.reshape(B, feat_size[0], feat_size[1], -1).permute(0, 3, 1, 2).contiguous()
         return x
 
@@ -473,11 +309,8 @@ class PyramidVisionTransformerV2(nn.Module):
             attn_drop_rate=0.,
             drop_path_rate=0.,
             norm_layer=LayerNorm,
-            pvtStageDownsampleLoan=False,
-            initialDownsampleLoan=False,
-            pvtStageLastNormLoan=False,
-            pvtStageBlockNormLoan=False,
-            pretrainedPath=None
+            pretrainedPath=None,
+            useMamba=True
     ):
         super().__init__()
         self.num_classes = num_classes
@@ -490,15 +323,12 @@ class PyramidVisionTransformerV2(nn.Module):
         sr_ratios = to_ntuple(num_stages)(sr_ratios)
         assert(len(embed_dims)) == num_stages
         self.feature_info = []
-        self.useLoan = pvtStageDownsampleLoan or initialDownsampleLoan or pvtStageLastNormLoan or pvtStageBlockNormLoan
 
-        self.initialDownsampleLoan = initialDownsampleLoan
         self.patch_embed = OverlapPatchEmbed(
             patch_size=7,
             stride=4,
             in_chans=in_chans,
             embed_dim=embed_dims[0],
-            loan=initialDownsampleLoan,
         )
 
         dpr = [x.tolist() for x in torch.linspace(0, drop_path_rate, sum(depths)).split(depths)]
@@ -520,9 +350,7 @@ class PyramidVisionTransformerV2(nn.Module):
                 attn_drop=attn_drop_rate,
                 drop_path=dpr[i],
                 norm_layer=norm_layer,
-                downsampleLoan=pvtStageDownsampleLoan,
-                pvtStageLastNormLoan=pvtStageLastNormLoan,
-                pvtStageBlockNormLoan=pvtStageBlockNormLoan
+                useMamba=useMamba,
             )]
             prev_dim = embed_dims[i]
             cur += depths[i]
@@ -531,11 +359,11 @@ class PyramidVisionTransformerV2(nn.Module):
 
         # classification head
         self.num_features = embed_dims[-1]
-        # self.head_drop = nn.Dropout(drop_rate)
-        # self.head = nn.Linear(embed_dims[-1], num_classes) if num_classes > 0 else nn.Identity()
+        self.head_drop = nn.Dropout(drop_rate)
+        self.head = nn.Linear(embed_dims[-1], num_classes) if num_classes > 0 else nn.Identity()
 
         self.apply(self._init_weights)
-        
+
         if pretrainedPath is not None:
             print("Use pretrained PVT weights.")
             pretrainedStateDict = torch.load(pretrainedPath)
@@ -607,18 +435,12 @@ class PyramidVisionTransformerV2(nn.Module):
             self.global_pool = global_pool
         self.head = nn.Linear(self.embed_dim, num_classes) if num_classes > 0 else nn.Identity()
 
-    def forward_features(self, x, staticData=None):
+    def forward_features(self, x):
         x_out = []
-        if self.useLoan:
-            x = self.patch_embed(x, staticData[0])
-            for i, s in enumerate(self.stages):
-                x = s(x, staticData[i])
-                x_out.append(x)
-        else:
-            x = self.patch_embed(x)
-            for i, s in enumerate(self.stages):
-                x = s(x)
-                x_out.append(x)
+        x = self.patch_embed(x)
+        for i, s in enumerate(self.stages):
+            x = s(x)
+            x_out.append(x)
         return x_out
 
     def forward_head(self, x, pre_logits: bool = False):
@@ -627,9 +449,8 @@ class PyramidVisionTransformerV2(nn.Module):
         x = self.head_drop(x)
         return x if pre_logits else self.head(x)
 
-    def forward(self, x, staticData=None):
-        # Input shape: B * T, C, H, W
-        x = self.forward_features(x, staticData)
+    def forward(self, x):
+        x = self.forward_features(x)
         # x = self.forward_head(x)
         return x
 

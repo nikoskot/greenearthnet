@@ -1,0 +1,10 @@
+#!/bin/bash
+#SBATCH --partition=A100medium
+#SBATCH --time=24:00:00
+#SBATCH --gpus=2
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=16
+#SBATCH --output=slurm_mambaOnPVT-%A_%a.out
+#SBATCH --dependency=afterany:124534
+
+python /home/nikoskot/greenearthnet/train.py /home/nikoskot/greenearthnet/model_configs/contextformer/contextformer6M/seed=27MambaOnPVT.yaml --data_dir /home/nikoskot/earthnetThesis/GreenEarthnetDataset/greenearthnet/ --use_mamba
