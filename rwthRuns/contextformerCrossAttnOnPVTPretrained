@@ -1,0 +1,16 @@
+#!/usr/bin/zsh 
+
+### Job Parameters 
+#SBATCH --partition=c23g
+#SBATCH --time=1-10:00:00         
+#SBATCH --gres=gpu:2
+#SBATCH --cpus-per-task=16
+#SBATCH --output=slurm_CrossAttnOnPVTPretrained-%A_%a.out
+#SBATCH --account=thes1823
+
+export CONDA_ROOT=$HOME/miniforge3
+source $CONDA_ROOT/etc/profile.d/conda.sh
+export PATH="$CONDA_ROOT/bin:$PATH"
+conda activate greenearthnet2
+
+python /hpcwork/nq011071/greenearthnet/train.py /hpcwork/nq011071/greenearthnet/rwthRuns/seed=27CrossAttnOnPVTPretrained.yaml --data_dir /hpcwork/nq011071/earthnetThesis/GreenearthnetDataset --use_pvt_cross_attn
