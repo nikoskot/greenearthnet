@@ -13,8 +13,8 @@ from earthnet_models_pytorch.model import MODELS
 from earthnet_models_pytorch.task import SpatioTemporalTask
 from earthnet_models_pytorch.utils import parse_setting
 from pytorch_lightning.callbacks import TQDMProgressBar
-from pytorch_lightning.plugins import DDPPlugin
-from pytorch_lightning.strategies import DDPStrategy
+# from pytorch_lightning.plugins import DDPPlugin
+# from pytorch_lightning.strategies import DDPStrategy
 
 
 def train_model(setting_dict: dict, setting_file: str = None, use_loan: bool = False, use_mamba: bool = False, use_pvt_cross_attn: bool = False):
