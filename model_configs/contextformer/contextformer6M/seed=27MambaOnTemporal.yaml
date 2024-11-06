@@ -5,7 +5,7 @@ Seed: 27
 Setting: greenearthnet
 
 Logger:
-    save_dir: "experiments/trainMambaOnPVT"
+    save_dir: "experiments/trainMambaOnTemporal"
 
 Checkpointer:
     save_top_k: 1
@@ -79,7 +79,7 @@ Model:
     add_mean_ndvi: False
     pvt: True
     pvt_frozen: False
-    useMambaOnPVT: True
-    useMambaOnTemporal: False
+    useMambaOnPVT: False
+    useMambaOnTemporal: True
     pretrainedPVT: True
     pretrainedContextformerWeightsPath: ''

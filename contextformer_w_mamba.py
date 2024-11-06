@@ -250,7 +250,7 @@ class ContextFormer(nn.Module):
             self.embed_images = PVT_embed(
                 in_channels=self.hparams.n_image,
                 out_channels=self.hparams.n_hidden,
-                pretrained=self.pretrainedContextformerWeightsPath=='',
+                pretrained=self.hparams.pretrainedPVT,
                 frozen=self.hparams.pvt_frozen,
                 useMambaOnPVT=self.hparams.useMambaOnPVT
             )
@@ -271,18 +271,31 @@ class ContextFormer(nn.Module):
 
         self.mask_token = nn.Parameter(torch.zeros(self.hparams.n_hidden))
 
-        self.blocks = nn.ModuleList(
-            [
-                Block(
-                    self.hparams.n_hidden,
-                    self.hparams.n_heads,
-                    self.hparams.mlp_ratio,
-                    qkv_bias=True,
-                    norm_layer=nn.LayerNorm,
-                )
-                for _ in range(self.hparams.depth)
-            ]
-        )
+        if self.hparams.useMambaOnTemporal:
+            self.blocks = nn.ModuleList(
+                [
+                    Mamba(
+                        d_model=self.hparams.n_hidden, # Model dimension d_model
+                        d_state=16,  # SSM state expansion factor
+                        d_conv=4,    # Local convolution width
+                        expand=2,    # Block expansion factor
+                    )
+                    for _ in range(self.hparams.depth)
+                ]
+            )
+        else:
+            self.blocks = nn.ModuleList(
+                [
+                    Block(
+                        self.hparams.n_hidden,
+                        self.hparams.n_heads,
+                        self.hparams.mlp_ratio,
+                        qkv_bias=True,
+                        norm_layer=nn.LayerNorm,
+                    )
+                    for _ in range(self.hparams.depth)
+                ]
+            )
 
         self.head = Mlp(
             in_features=self.hparams.n_hidden,
@@ -373,6 +386,8 @@ class ContextFormer(nn.Module):
         parser.add_argument("--add_mean_ndvi", type=str2bool, default=False)
         parser.add_argument("--spatial_shuffle", type=str2bool, default=False)
         parser.add_argument("--useMambaOnPVT", type=str2bool, default=False)
+        parser.add_argument("--useMambaOnTemporal", type=str2bool, default=False)
+        parser.add_argument("--pretrainedPVT", type=str2bool, default=True)
         parser.add_argument("--pretrainedContextformerWeightsPath", type=str, default='')
 
         return parser

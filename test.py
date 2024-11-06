@@ -12,7 +12,7 @@ from pytorch_lightning.callbacks import TQDMProgressBar
 from customCallbacks import InferenceTimeCallback
 
 
-def test_model(setting_dict: dict, checkpoint: str, use_loan: bool = False):
+def test_model(setting_dict: dict, checkpoint: str, use_loan: bool = False, use_mamba: bool = False, use_pvt_cross_attn: bool = False):
     # Data
     data_args = [
         "--{}={}".format(key, value) for key, value in setting_dict["Data"].items()
@@ -25,6 +25,28 @@ def test_model(setting_dict: dict, checkpoint: str, use_loan: bool = False):
     # Model
     if use_loan:
         from contextformer_w_loan import ContextFormer
+        model_args = [
+            "--{}={}".format(key, value) for key, value in setting_dict["Model"].items()
+        ]
+        model_parser = ArgumentParser()
+        model_parser = ContextFormer.add_model_specific_args(
+            model_parser
+        )
+        model_params = model_parser.parse_args(model_args)
+        model = ContextFormer(model_params)
+    elif use_pvt_cross_attn:
+        from contextformer_w_cross_attn import ContextFormer
+        model_args = [
+            "--{}={}".format(key, value) for key, value in setting_dict["Model"].items()
+        ]
+        model_parser = ArgumentParser()
+        model_parser = ContextFormer.add_model_specific_args(
+            model_parser
+        )
+        model_params = model_parser.parse_args(model_args)
+        model = ContextFormer(model_params)
+    elif use_mamba:
+        from contextformer_w_mamba import ContextFormer
         model_args = [
             "--{}={}".format(key, value) for key, value in setting_dict["Model"].items()
         ]
@@ -121,6 +143,18 @@ if __name__ == "__main__":
         action='store_true',
         help="If to use LOAN on the model or not",
     )
+    parser.add_argument(
+        "--use_mamba",
+        default=False,
+        action='store_true',
+        help="If to use LOAN on the model or not",
+    )
+    parser.add_argument(
+        "--use_pvt_cross_attn",
+        default=False,
+        action='store_true',
+        help="If to use LOAN on the model or not",
+    )
     args = parser.parse_args()
 
     import os
@@ -140,4 +174,4 @@ if __name__ == "__main__":
     if "gpus" in setting_dict["Trainer"]:
         setting_dict["Trainer"]["gpus"] = args.gpus
 
-    test_model(setting_dict, args.checkpoint, args.use_loan)
+    test_model(setting_dict, args.checkpoint, args.use_loan, args.use_mamba, args.use_pvt_cross_attn)

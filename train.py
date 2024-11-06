@@ -42,7 +42,7 @@ def train_model(setting_dict: dict, setting_file: str = None, use_loan: bool = F
         )
         model_params = model_parser.parse_args(model_args)
         model = ContextFormer(model_params)
-    if use_pvt_cross_attn:
+    elif use_pvt_cross_attn:
         from contextformer_w_cross_attn import ContextFormer
         model_args = [
             "--{}={}".format(key, value) for key, value in setting_dict["Model"].items()
@@ -74,7 +74,10 @@ def train_model(setting_dict: dict, setting_file: str = None, use_loan: bool = F
         )
         model_params = model_parser.parse_args(model_args)
         model = MODELS[setting_dict["Architecture"]](model_params)
-        
+    
+    print("Model architecture:")
+    print(model)
+    
     # Task
     task_args = [
         "--{}={}".format(key, value) for key, value in setting_dict["Task"].items()
