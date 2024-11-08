@@ -307,6 +307,7 @@ class Block(nn.Module):
             attn_drop=attn_drop,
             proj_drop=proj_drop,
         )
+        # self.attn2 = nn.MultiheadAttention(embed_dim=dim, num_heads=num_heads, dropout=attn_drop, bias=qkv_bias)
         self.drop_path1 = DropPath(drop_path) if drop_path > 0. else nn.Identity()
 
         self.norm2 = norm_layer(dim)
@@ -323,6 +324,9 @@ class Block(nn.Module):
 
         x = x + self.drop_path1(self.attn(self.norm1(x), feat_size, staticData))
         x = x + self.drop_path2(self.mlp(self.norm2(x), feat_size))
+        # attn_res, _ = self.attn2(query=self.norm1(x), key=staticData, value=staticData, need_weights=False)
+        # x = x + self.drop_path1(attn_res)
+        # x = x + self.drop_path2(self.mlp(self.norm2(x), feat_size))
 
         return x
 
