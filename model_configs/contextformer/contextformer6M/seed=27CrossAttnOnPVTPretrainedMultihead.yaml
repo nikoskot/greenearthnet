@@ -5,7 +5,7 @@ Seed: 27
 Setting: greenearthnet
 
 Logger:
-    save_dir: "experiments/trainCrossAttnOnPVTPretrained2"
+    save_dir: "experiments/trainCrossAttnOnPVTPretrainedMultihead"
 
 Checkpointer:
     save_top_k: 5
