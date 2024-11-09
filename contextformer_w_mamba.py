@@ -393,6 +393,9 @@ class ContextFormer(nn.Module):
         parser.add_argument("--spatial_shuffle", type=str2bool, default=False)
         parser.add_argument("--useMambaOnPVT", type=str2bool, default=False)
         parser.add_argument("--useMambaOnTemporal", type=str2bool, default=False)
+        parser.add_argument("--mamba_d_state", type=int, default=16)
+        parser.add_argument("--mamba_d_conv", type=int, default=4)
+        parser.add_argument("--mamba_expand", type=int, default=2)
         parser.add_argument("--pretrainedPVT", type=str2bool, default=True)
         parser.add_argument("--pretrainedContextformerWeightsPath", type=str, default='')
 
