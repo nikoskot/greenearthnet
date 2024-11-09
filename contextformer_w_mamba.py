@@ -184,7 +184,7 @@ def get_sinusoid_encoding_table(positions, d_hid, T=1000):
 
 class PVT_embed(nn.Module):
 
-    def __init__(self, in_channels, out_channels, pretrained=True, frozen=False, useMambaOnPVT=True):
+    def __init__(self, in_channels, out_channels, pretrained=True, frozen=False, useMambaOnPVT=True, mamba_d_state=16, mamba_d_conv=4, mamba_expand=2):
         super().__init__()
 
         # self.pvt = timm.create_model(
@@ -204,7 +204,10 @@ class PVT_embed(nn.Module):
                                               embed_dims=embed_dims,
                                               num_heads=(1,2,5,8),
                                               pretrainedPath="./pvt.pt" if pretrained else None,
-                                              useMamba=useMambaOnPVT)
+                                              useMamba=useMambaOnPVT,
+                                              mamba_d_state=mamba_d_state,
+                                              mamba_d_conv=mamba_d_conv,
+                                              mamba_expand=mamba_expand)
         if frozen:
             for param in self.pvt.parameters():
                 param.requires_grad = False
@@ -252,7 +255,10 @@ class ContextFormer(nn.Module):
                 out_channels=self.hparams.n_hidden,
                 pretrained=self.hparams.pretrainedPVT,
                 frozen=self.hparams.pvt_frozen,
-                useMambaOnPVT=self.hparams.useMambaOnPVT
+                useMambaOnPVT=self.hparams.useMambaOnPVT,
+                mamba_d_state=self.hparams.mamba_d_state, 
+                mamba_d_conv=self.hparams.mamba_d_conv, 
+                mamba_expand=self.hparams.mamba_expand
             )
         else:
             self.embed_images = Mlp(

@@ -161,7 +161,10 @@ class Block(nn.Module):
             drop_path=0.,
             act_layer=nn.GELU,
             norm_layer=LayerNorm,
-            useMamba=True
+            useMamba=True,
+            mamba_d_state=16,
+            mamba_d_conv=4,
+            mamba_expand=2
     ):
         super().__init__()
         self.norm1 = norm_layer(dim)
@@ -169,9 +172,9 @@ class Block(nn.Module):
         if useMamba:
             self.mamba_attn = Mamba(
                 d_model=dim, # Model dimension d_model
-                d_state=16,  # SSM state expansion factor
-                d_conv=4,    # Local convolution width
-                expand=2,    # Block expansion factor
+                d_state=mamba_d_state,  # SSM state expansion factor
+                d_conv=mamba_d_conv,    # Local convolution width
+                expand=mamba_expand,    # Block expansion factor
             )
         else:
             self.attn = Attention(
@@ -242,6 +245,9 @@ class PyramidVisionTransformerStage(nn.Module):
             drop_path: Union[List[float], float] = 0.0,
             norm_layer: Callable = LayerNorm,
             useMamba=True,
+            mamba_d_state=16,
+            mamba_d_conv=4,
+            mamba_expand=2
     ):
         super().__init__()
         self.grad_checkpointing = False
@@ -269,6 +275,9 @@ class PyramidVisionTransformerStage(nn.Module):
             drop_path=drop_path[i] if isinstance(drop_path, list) else drop_path,
             norm_layer=norm_layer,
             useMamba=useMamba,
+            mamba_d_state=mamba_d_state,
+            mamba_d_conv=mamba_d_conv,
+            mamba_expand=mamba_expand
         ) for i in range(depth)])
 
         self.norm = norm_layer(dim_out)
@@ -310,7 +319,10 @@ class PyramidVisionTransformerV2(nn.Module):
             drop_path_rate=0.,
             norm_layer=LayerNorm,
             pretrainedPath=None,
-            useMamba=True
+            useMamba=True,
+            mamba_d_state=16,
+            mamba_d_conv=4,
+            mamba_expand=2
     ):
         super().__init__()
         self.num_classes = num_classes
@@ -351,6 +363,9 @@ class PyramidVisionTransformerV2(nn.Module):
                 drop_path=dpr[i],
                 norm_layer=norm_layer,
                 useMamba=useMamba,
+                mamba_d_state=mamba_d_state,
+                mamba_d_conv=mamba_d_conv,
+                mamba_expand=mamba_expand
             )]
             prev_dim = embed_dims[i]
             cur += depths[i]
