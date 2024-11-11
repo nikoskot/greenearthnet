@@ -210,7 +210,8 @@ class CrossAttention(nn.Module):
             linear_attn=False,
             qkv_bias=True,
             attn_drop=0.,
-            proj_drop=0.
+            proj_drop=0.,
+            encoded_cond_data=False,
     ):
         super().__init__()
         assert dim % num_heads == 0, f"dim {dim} should be divided by num_heads {num_heads}."
@@ -222,7 +223,10 @@ class CrossAttention(nn.Module):
         self.fused_attn = use_fused_attn()
 
         self.q = nn.Linear(dim, dim, bias=qkv_bias)
-        self.kv = nn.Linear(dim, dim * 2, bias=qkv_bias)
+        if sr_ratio > 1:
+            self.kv = nn.Linear(dim, dim * 2, bias=qkv_bias)
+        else:
+            self.kv = nn.Linear(dim if encoded_cond_data else 3, dim * 2, bias=qkv_bias)
         self.attn_drop = nn.Dropout(attn_drop)
         self.proj = nn.Linear(dim, dim)
         self.proj_drop = nn.Dropout(proj_drop)
@@ -230,7 +234,7 @@ class CrossAttention(nn.Module):
         if not linear_attn:
             self.pool = None
             if sr_ratio > 1:
-                self.sr = nn.Conv2d(dim, dim, kernel_size=sr_ratio, stride=sr_ratio)
+                self.sr = nn.Conv2d(dim if encoded_cond_data else 3, dim, kernel_size=sr_ratio, stride=sr_ratio)
                 self.norm = nn.LayerNorm(dim)
             else:
                 self.sr = None
@@ -250,15 +254,15 @@ class CrossAttention(nn.Module):
         q = self.q(x).reshape(B, N, self.num_heads, -1).permute(0, 2, 1, 3)
 
         if self.pool is not None:
-            cond_data = cond_data.permute(0, 2, 1).reshape(B, C, H, W)
+            cond_data = cond_data.permute(0, 2, 1).reshape(Bc, Cc, H, W)
             cond_data = self.sr(self.pool(cond_data)).reshape(B, C, -1).permute(0, 2, 1)
             cond_data = self.norm(cond_data)
             cond_data = self.act(cond_data)
             kv = self.kv(cond_data).reshape(B, -1, 2, self.num_heads, self.head_dim).permute(2, 0, 3, 1, 4)
         else:
             if self.sr is not None:
-                cond_data = cond_data.permute(0, 2, 1).reshape(B, C, H, W)
-                cond_data = self.sr(cond_data).reshape(B, C, -1).permute(0, 2, 1)
+                cond_data = cond_data.permute(0, 2, 1).reshape(Bc, Cc, H, W)
+                cond_data = self.sr(cond_data).reshape(Bc, C, -1).permute(0, 2, 1)
                 cond_data = self.norm(cond_data)
                 kv = self.kv(cond_data).reshape(B, -1, 2, self.num_heads, self.head_dim).permute(2, 0, 3, 1, 4)
             else:
@@ -295,9 +299,11 @@ class Block(nn.Module):
             drop_path=0.,
             act_layer=nn.GELU,
             norm_layer=LayerNorm,
+            encoded_cond_data=False,
     ):
         super().__init__()
         self.norm1 = norm_layer(dim)
+        self.normStatic = norm_layer(dim if encoded_cond_data else 3)
         self.attn = CrossAttention(
             dim,
             num_heads=num_heads,
@@ -306,6 +312,7 @@ class Block(nn.Module):
             qkv_bias=qkv_bias,
             attn_drop=attn_drop,
             proj_drop=proj_drop,
+            encoded_cond_data=encoded_cond_data,
         )
         # self.attn2 = nn.MultiheadAttention(embed_dim=dim, num_heads=num_heads, dropout=attn_drop, bias=qkv_bias)
         self.drop_path1 = DropPath(drop_path) if drop_path > 0. else nn.Identity()
@@ -322,7 +329,7 @@ class Block(nn.Module):
 
     def forward(self, x, feat_size: List[int], staticData=None):
 
-        x = x + self.drop_path1(self.attn(self.norm1(x), feat_size, staticData))
+        x = x + self.drop_path1(self.attn(self.norm1(x), feat_size, self.normStatic(staticData)))
         x = x + self.drop_path2(self.mlp(self.norm2(x), feat_size))
         # attn_res, _ = self.attn2(query=self.norm1(x), key=staticData, value=staticData, need_weights=False)
         # x = x + self.drop_path1(attn_res)
@@ -367,6 +374,7 @@ class PyramidVisionTransformerStage(nn.Module):
             attn_drop: float = 0.,
             drop_path: Union[List[float], float] = 0.0,
             norm_layer: Callable = LayerNorm,
+            encoded_cond_data=False,
     ):
         super().__init__()
         self.grad_checkpointing = False
@@ -392,6 +400,7 @@ class PyramidVisionTransformerStage(nn.Module):
             attn_drop=attn_drop,
             drop_path=drop_path[i] if isinstance(drop_path, list) else drop_path,
             norm_layer=norm_layer,
+            encoded_cond_data=encoded_cond_data,
         ) for i in range(depth)])
 
         self.norm = norm_layer(dim_out)
@@ -440,7 +449,8 @@ class PyramidVisionTransformerV2(nn.Module):
             attn_drop_rate=0.,
             drop_path_rate=0.,
             norm_layer=LayerNorm,
-            pretrainedPath=None
+            pretrainedPath=None,
+            encoded_cond_data=False,
     ):
         super().__init__()
         self.num_classes = num_classes
@@ -480,6 +490,7 @@ class PyramidVisionTransformerV2(nn.Module):
                 attn_drop=attn_drop_rate,
                 drop_path=dpr[i],
                 norm_layer=norm_layer,
+                encoded_cond_data=encoded_cond_data,
             )]
             prev_dim = embed_dims[i]
             cur += depths[i]
@@ -519,6 +530,15 @@ class PyramidVisionTransformerV2(nn.Module):
                                 pretrainedStateDict[k] = F.interpolate(pretrainedStateDict[k], size=(self.state_dict()[k].shape[0], self.state_dict()[k].shape[1], self.state_dict()[k].shape[2]), mode='nearest')
                             elif len(pretrainedStateDict[k].shape) == 4:
                                 pretrainedStateDict[k] = F.interpolate(pretrainedStateDict[k].permute(2,3,0,1), size=(self.state_dict()[k].shape[0], self.state_dict()[k].shape[1]), mode='nearest').permute(2,3,0,1)
+
+            if pretrainedPath is not None:
+                for k in list(pretrainedStateDict.keys()):
+                    if (k in list(self.state_dict().keys())) and ("sr.weight" in k):
+                        if pretrainedStateDict[k].shape != self.state_dict()[k].shape:
+                            pretrainedStateDict[k] = F.interpolate(pretrainedStateDict[k].permute(2,3,0,1), size=(self.state_dict()[k].shape[0], self.state_dict()[k].shape[1]), mode='bilinear').permute(2,3,0,1)
+                    elif (k in list(self.state_dict().keys())) and ("kv.weight" in k):
+                        if pretrainedStateDict[k].shape != self.state_dict()[k].shape:
+                            pretrainedStateDict[k] = F.interpolate(pretrainedStateDict[k].unsqueeze(0).unsqueeze(0), size=(self.state_dict()[k].shape[0], self.state_dict()[k].shape[1]), mode='bilinear').squeeze(0).squeeze(0)              
 
             self.load_state_dict(pretrainedStateDict, strict=False)
 

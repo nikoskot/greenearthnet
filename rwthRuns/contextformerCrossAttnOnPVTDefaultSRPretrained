@@ -5,7 +5,7 @@
 #SBATCH --time=1-10:00:00         
 #SBATCH --gres=gpu:2
 #SBATCH --cpus-per-task=16
-#SBATCH --output=slurm_CrossAttnOnPVTPretrainedEval-%A_%a.out
+#SBATCH --output=slurm_CrossAttnOnPVTDefaultSRPretrainedTrain-%A_%a.out
 #SBATCH --account=thes1823
 
 export CONDA_ROOT=$HOME/miniforge3
@@ -13,8 +13,8 @@ source $CONDA_ROOT/etc/profile.d/conda.sh
 export PATH="$CONDA_ROOT/bin:$PATH"
 conda activate greenearthnet2
 
-# python /hpcwork/nq011071/greenearthnet/train.py /hpcwork/nq011071/greenearthnet/rwthRuns/seed=27CrossAttnOnPVTPretrained.yaml --data_dir /hpcwork/nq011071/earthnetThesis/GreenearthnetDataset --use_pvt_cross_attn
+python /hpcwork/nq011071/greenearthnet/train.py /home/nikoskot/greenearthnet/rwthRuns/seed=27CrossAttnOnPVTDefaultSRPretrained.yaml --data_dir /hpcwork/nq011071/earthnetThesis/GreenearthnetDataset --use_pvt_cross_attn
 
 # python /hpcwork/nq011071/greenearthnet/testRWTH.py /hpcwork/nq011071/greenearthnet/rwthRuns/seed=27CrossAttnOnPVTPretrained.yaml /hpcwork/nq011071/greenearthnet/experiments/trainCrossAttnOnPVTPretrained/greenearthnet/contextformer/rwthRuns/config_seed=27CrossAttnOnPVTPretrained/checkpoints/Epoch-epoch=18-RMSEVegetation-RMSE_Veg=0.1499.ckpt --track ood-t_chopped --pred_dir /hpcwork/nq011071/greenearthnet/experiments/predictions/crossAttnOnPVTPretrained --data_dir /hpcwork/nq011071/earthnetThesis/GreenearthnetDataset --use_pvt_cross_attn
 
-python /hpcwork/nq011071/greenearthnet/eval.py /hpcwork/nq011071/earthnetThesis/GreenearthnetDataset/ood-t_chopped /hpcwork/nq011071/greenearthnet/experiments/predictions/crossAttnOnPVTPretrained /hpcwork/nq011071/greenearthnet/experiments/scores/crossAttnOnPVTPretrained
+# python /hpcwork/nq011071/greenearthnet/eval.py /hpcwork/nq011071/earthnetThesis/GreenearthnetDataset/ood-t_chopped /hpcwork/nq011071/greenearthnet/experiments/predictions/crossAttnOnPVTPretrained /hpcwork/nq011071/greenearthnet/experiments/scores/crossAttnOnPVTPretrained

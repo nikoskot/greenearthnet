@@ -71,6 +71,73 @@ class Attention(nn.Module):
         x = self.proj(x)
         x = self.proj_drop(x)
         return x
+    
+class CrossAttention(nn.Module):
+    # https://github.com/huggingface/pytorch-image-models/blob/main/timm/models/vision_transformer.py
+    fast_attn: Final[bool]
+
+    def __init__(
+        self,
+        dim,
+        num_heads=8,
+        qkv_bias=False,
+        qk_norm=False,
+        attn_drop=0.0,
+        proj_drop=0.0,
+        norm_layer=nn.LayerNorm,
+    ):
+        super().__init__()
+        assert dim % num_heads == 0, "dim should be divisible by num_heads"
+        self.num_heads = num_heads
+        self.head_dim = dim // num_heads
+        self.scale = self.head_dim**-0.5
+        self.fast_attn = hasattr(
+            torch.nn.functional, "scaled_dot_product_attention"
+        )  # FIXME
+
+        self.q = nn.Linear(dim, dim, bias=qkv_bias)
+        self.kv = nn.Linear(dim, dim * 2, bias=qkv_bias)
+        self.q_norm = norm_layer(self.head_dim) if qk_norm else nn.Identity()
+        self.k_norm = norm_layer(self.head_dim) if qk_norm else nn.Identity()
+        self.attn_drop = nn.Dropout(attn_drop)
+        self.proj = nn.Linear(dim, dim)
+        self.proj_drop = nn.Dropout(proj_drop)
+
+    def forward(self, x, cond_data):
+        B, N, C = x.shape
+        Bc, Nc, Cc = cond_data.shape
+
+        q = (
+            self.q(x)
+            .reshape(B, N, self.num_heads, self.head_dim)
+            .permute(0, 2, 1, 3)
+        )
+        kv = (
+            self.kv(cond_data)
+            .reshape(B, N, 2, self.num_heads, self.head_dim)
+            .permute(2, 0, 3, 1, 4)
+        )
+        k, v = kv.unbind(0)
+        q, k = self.q_norm(q), self.k_norm(k)
+
+        if self.fast_attn:
+            x = F.scaled_dot_product_attention(
+                q,
+                k,
+                v,
+                dropout_p=self.attn_drop.p,
+            )
+        else:
+            q = q * self.scale
+            attn = q @ k.transpose(-2, -1)
+            attn = attn.softmax(dim=-1)
+            attn = self.attn_drop(attn)
+            x = attn @ v
+
+        x = x.transpose(1, 2).reshape(B, N, C)
+        x = self.proj(x)
+        x = self.proj_drop(x)
+        return x
 
 
 class Mlp(nn.Module):
@@ -127,18 +194,32 @@ class Block(nn.Module):
         init_values=None,
         act_layer=nn.GELU,
         norm_layer=nn.LayerNorm,
+        useCrossAttn=False,
     ):
         super().__init__()
+        self.useCrossAttn = useCrossAttn
         self.norm1 = norm_layer(dim)
-        self.attn = Attention(
-            dim,
-            num_heads=num_heads,
-            qkv_bias=qkv_bias,
-            qk_norm=qk_norm,
-            attn_drop=attn_drop,
-            proj_drop=drop,
-            norm_layer=norm_layer,
-        )
+        if useCrossAttn:
+            self.crossAttn = CrossAttention(
+                dim,
+                num_heads=num_heads,
+                qkv_bias=qkv_bias,
+                qk_norm=qk_norm,
+                attn_drop=attn_drop,
+                proj_drop=drop,
+                norm_layer=norm_layer,
+            )
+            self.normCond = norm_layer(dim)
+        else:
+            self.attn = Attention(
+                dim,
+                num_heads=num_heads,
+                qkv_bias=qkv_bias,
+                qk_norm=qk_norm,
+                attn_drop=attn_drop,
+                proj_drop=drop,
+                norm_layer=norm_layer,
+            )
         self.ls1 = (
             LayerScale(dim, init_values=init_values) if init_values else nn.Identity()
         )
@@ -154,9 +235,13 @@ class Block(nn.Module):
             LayerScale(dim, init_values=init_values) if init_values else nn.Identity()
         )
 
-    def forward(self, x):
-        x = x + self.ls1(self.attn(self.norm1(x)))
-        x = x + self.ls2(self.mlp(self.norm2(x)))
+    def forward(self, x, condData=None):
+        if self.useCrossAttn:
+            x = x + self.ls1(self.crossAttn(self.norm1(x), self.normCond(condData)))
+            x = x + self.ls2(self.mlp(self.norm2(x)))
+        else:
+            x = x + self.ls1(self.attn(self.norm1(x)))
+            x = x + self.ls2(self.mlp(self.norm2(x)))
         return x
 
 
@@ -183,7 +268,7 @@ def get_sinusoid_encoding_table(positions, d_hid, T=1000):
 
 class PVT_embed(nn.Module):
 
-    def __init__(self, in_channels, out_channels, pretrained=True, frozen=False):
+    def __init__(self, in_channels, out_channels, pretrained=True, frozen=False, sr_ratios=(8, 4, 2, 1), encoded_cond_data=False):
         super().__init__()
 
         # self.pvt = timm.create_model(
@@ -202,7 +287,9 @@ class PVT_embed(nn.Module):
                                               depths=(2,2,2,2),
                                               embed_dims=embed_dims,
                                               num_heads=(1,2,5,8),
-                                              pretrainedPath="./pvt.pt" if pretrained else None)
+                                              pretrainedPath="./pvt.pt" if pretrained else None,
+                                              sr_ratios=sr_ratios,
+                                              encoded_cond_data=encoded_cond_data)
         if frozen:
             for param in self.pvt.parameters():
                 param.requires_grad = False
@@ -277,8 +364,10 @@ class ContextFormer(nn.Module):
             self.embed_images = PVT_embed(
                 in_channels=self.hparams.n_image,
                 out_channels=self.hparams.n_hidden,
-                pretrained=self.pretrainedContextformerWeightsPath=='',
+                pretrained=self.hparams.pretrainedPVT,
                 frozen=self.hparams.pvt_frozen,
+                sr_ratios=(8, 4, 2, 1) if self.hparams.default_pvt_sr_ratios else (1, 1, 1, 1),
+                encoded_cond_data=self.hparams.encodeStaticData
             )
         else:
             self.embed_images = Mlp(
@@ -294,8 +383,9 @@ class ContextFormer(nn.Module):
             hidden_features=self.hparams.n_hidden,
             out_features=self.hparams.n_hidden,
         )
-
-        self.embed_static = StaticDataEncoder(in_channels=self.hparams.n_static, final_channels=self.hparams.n_hidden)
+        
+        if self.hparams.encodeStaticData:
+            self.embed_static = StaticDataEncoder(in_channels=self.hparams.n_static, final_channels=self.hparams.n_hidden)
 
         self.mask_token = nn.Parameter(torch.zeros(self.hparams.n_hidden))
 
@@ -307,6 +397,7 @@ class ContextFormer(nn.Module):
                     self.hparams.mlp_ratio,
                     qkv_bias=True,
                     norm_layer=nn.LayerNorm,
+                    useCrossAttn=self.hparams.weatherCrossAttention
                 )
                 for _ in range(self.hparams.depth)
             ]
@@ -361,6 +452,14 @@ class ContextFormer(nn.Module):
                             elif len(checkpoint[k].shape) == 4:
                                 checkpoint[k] = F.interpolate(checkpoint[k].permute(2,3,0,1), size=(self.state_dict()[k].shape[0], self.state_dict()[k].shape[1]), mode='nearest').permute(2,3,0,1)
 
+            for k in list(checkpoint.keys()):
+                if (k in list(self.state_dict().keys())) and ("sr.weight" in k):
+                    if checkpoint[k].shape != self.state_dict()[k].shape:
+                        checkpoint[k] = F.interpolate(checkpoint[k].permute(2,3,0,1), size=(self.state_dict()[k].shape[0], self.state_dict()[k].shape[1]), mode='bilinear').permute(2,3,0,1)
+                elif (k in list(self.state_dict().keys())) and ("kv.weight" in k):
+                    if checkpoint[k].shape != self.state_dict()[k].shape:
+                        checkpoint[k] = F.interpolate(checkpoint[k].unsqueeze(0).unsqueeze(0), size=(self.state_dict()[k].shape[0], self.state_dict()[k].shape[1]), mode='bilinear').squeeze(0).squeeze(0)              
+
             self.load_state_dict(checkpoint, strict=False)
 
 
@@ -402,6 +501,10 @@ class ContextFormer(nn.Module):
         parser.add_argument("--add_last_ndvi", type=str2bool, default=False)
         parser.add_argument("--add_mean_ndvi", type=str2bool, default=False)
         parser.add_argument("--spatial_shuffle", type=str2bool, default=False)
+        parser.add_argument("--encodeStaticData", type=str2bool, default=False)
+        parser.add_argument("--weatherCrossAttention", type=str2bool, default=False)
+        parser.add_argument("--pretrainedPVT", type=str2bool, default=True)
+        parser.add_argument("--default_pvt_sr_ratios", type=str2bool, default=True)
         parser.add_argument("--pretrainedContextformerWeightsPath", type=str, default='')
 
         return parser
@@ -466,7 +569,10 @@ class ContextFormer(nn.Module):
 
         images = hr_dynamic_inputs
         B, T, C, H, W = images.shape
-        static_embed = self.embed_static(static_inputs)
+        if self.hparams.encodeStaticData:
+            static_embed = self.embed_static(static_inputs)
+        else:
+            static_embed = [static_inputs, static_inputs, static_inputs, static_inputs]
 
         # Patchify
 
@@ -572,7 +678,10 @@ class ContextFormer(nn.Module):
 
         # Add Image and Weather Embeddings
         if self.hparams.use_weather:
-            patches_embed = image_patches_embed + weather_patches_embed
+            if self.hparams.weatherCrossAttention:
+                patches_embed = image_patches_embed
+            else:
+                patches_embed = image_patches_embed + weather_patches_embed
         else:
             patches_embed = image_patches_embed
 
@@ -584,11 +693,18 @@ class ContextFormer(nn.Module):
             .repeat(B_patch, 1, 1)
         )
 
-        x = patches_embed + pos_embed
+        if self.hparams.weatherCrossAttention:
+            x = patches_embed + pos_embed
+            condWeatherData = weather_patches_embed + pos_embed
+        else:
+            x = patches_embed + pos_embed
 
         # Then feed all into Transformer Encoder
         for blk in self.blocks:
-            x = blk(x)
+            if self.hparams.weatherCrossAttention:
+                x = blk(x, condWeatherData)
+            else:
+                x = blk(x)
 
         # Decode image patches
         x_out = self.head(x)

@@ -5,10 +5,10 @@ Seed: 27
 Setting: greenearthnet
 
 Logger:
-    save_dir: "experiments/trainCrossAttnOnPVTPretrainedReducedLr"
+    save_dir: "experiments/trainCrossAttnOnPVTDefaultSRPretrained"
 
 Checkpointer:
-    save_top_k: 1
+    save_top_k: 5
     save_last: True
     every_n_epochs: 1
 
@@ -47,7 +47,7 @@ Task:
                 name: AdamW
                 args: 
                     betas: [0.9, 0.999]
-                lr_per_sample: 0.000000125
+                lr_per_sample: 0.00000125
         lr_shedule:
             -
                 name: MultiStepLR
@@ -55,7 +55,7 @@ Task:
                     milestones: [190] #[2, 20, 50, 90]
                     gamma: 0.1
     n_log_batches: 2
-    compute_metric_on_test: True
+    compute_metric_on_test: False
 
 Model:
     patch_size: 4
@@ -80,4 +80,8 @@ Model:
     add_mean_ndvi: False
     pvt: True
     pvt_frozen: False
+    encodeStaticData: False
+    weatherCrossAttention: False
+    pretrainedPVT: True
+    default_pvt_sr_ratios: True
     pretrainedContextformerWeightsPath: '/hpcwork/nq011071/greenearthnet/model_weights/contextformer/contextformer6M/seed=27.ckpt'

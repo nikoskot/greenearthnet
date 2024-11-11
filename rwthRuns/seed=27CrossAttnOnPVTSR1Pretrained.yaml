@@ -5,7 +5,7 @@ Seed: 27
 Setting: greenearthnet
 
 Logger:
-    save_dir: "experiments/trainCrossAttnOnPVTPretrainedMultihead"
+    save_dir: "experiments/trainCrossAttnOnPVTSR1Pretrained"
 
 Checkpointer:
     save_top_k: 5
@@ -13,7 +13,7 @@ Checkpointer:
     every_n_epochs: 1
 
 Trainer:
-    gpus: 2
+    devices: 2
     strategy: 'ddp'
     log_every_n_steps: 32
     max_epochs: 100
@@ -55,7 +55,7 @@ Task:
                     milestones: [190] #[2, 20, 50, 90]
                     gamma: 0.1
     n_log_batches: 2
-    compute_metric_on_test: True
+    compute_metric_on_test: False
 
 Model:
     patch_size: 4
@@ -80,4 +80,8 @@ Model:
     add_mean_ndvi: False
     pvt: True
     pvt_frozen: False
-    pretrainedContextformerWeightsPath: '/home/nikoskot/greenearthnet/model_weights/contextformer/contextformer6M/seed=27.ckpt'
+    encodeStaticData: False
+    weatherCrossAttention: False
+    pretrainedPVT: True
+    default_pvt_sr_ratios: False
+    pretrainedContextformerWeightsPath: '/hpcwork/nq011071/greenearthnet/model_weights/contextformer/contextformer6M/seed=27.ckpt'
