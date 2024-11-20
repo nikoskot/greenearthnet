@@ -197,6 +197,84 @@ class MlpWithDepthwiseConv(nn.Module):
         x = self.fc2(x)
         x = self.drop(x)
         return x
+    
+class Attention(nn.Module):
+    fused_attn: torch.jit.Final[bool]
+
+    def __init__(
+            self,
+            dim,
+            num_heads=8,
+            sr_ratio=1,
+            linear_attn=False,
+            qkv_bias=True,
+            attn_drop=0.,
+            proj_drop=0.
+    ):
+        super().__init__()
+        assert dim % num_heads == 0, f"dim {dim} should be divided by num_heads {num_heads}."
+
+        self.dim = dim
+        self.num_heads = num_heads
+        self.head_dim = dim // num_heads
+        self.scale = self.head_dim ** -0.5
+        self.fused_attn = use_fused_attn()
+
+        self.q = nn.Linear(dim, dim, bias=qkv_bias)
+        self.kv = nn.Linear(dim, dim * 2, bias=qkv_bias)
+        self.attn_drop = nn.Dropout(attn_drop)
+        self.proj = nn.Linear(dim, dim)
+        self.proj_drop = nn.Dropout(proj_drop)
+
+        if not linear_attn:
+            self.pool = None
+            if sr_ratio > 1:
+                self.sr = nn.Conv2d(dim, dim, kernel_size=sr_ratio, stride=sr_ratio)
+                self.norm = nn.LayerNorm(dim)
+            else:
+                self.sr = None
+                self.norm = None
+            self.act = None
+        else:
+            self.pool = nn.AdaptiveAvgPool2d(7)
+            self.sr = nn.Conv2d(dim, dim, kernel_size=1, stride=1)
+            self.norm = nn.LayerNorm(dim)
+            self.act = nn.GELU()
+
+    def forward(self, x, feat_size: List[int]):
+        B, N, C = x.shape
+        H, W = feat_size
+        q = self.q(x).reshape(B, N, self.num_heads, -1).permute(0, 2, 1, 3)
+
+        if self.pool is not None:
+            x = x.permute(0, 2, 1).reshape(B, C, H, W)
+            x = self.sr(self.pool(x)).reshape(B, C, -1).permute(0, 2, 1)
+            x = self.norm(x)
+            x = self.act(x)
+            kv = self.kv(x).reshape(B, -1, 2, self.num_heads, self.head_dim).permute(2, 0, 3, 1, 4)
+        else:
+            if self.sr is not None:
+                x = x.permute(0, 2, 1).reshape(B, C, H, W)
+                x = self.sr(x).reshape(B, C, -1).permute(0, 2, 1)
+                x = self.norm(x)
+                kv = self.kv(x).reshape(B, -1, 2, self.num_heads, self.head_dim).permute(2, 0, 3, 1, 4)
+            else:
+                kv = self.kv(x).reshape(B, -1, 2, self.num_heads, self.head_dim).permute(2, 0, 3, 1, 4)
+        k, v = kv.unbind(0)
+
+        if self.fused_attn:
+            x = F.scaled_dot_product_attention(q, k, v, dropout_p=self.attn_drop.p)
+        else:
+            q = q * self.scale
+            attn = q @ k.transpose(-2, -1)
+            attn = attn.softmax(dim=-1)
+            attn = self.attn_drop(attn)
+            x = attn @ v
+
+        x = x.transpose(1, 2).reshape(B, N, C)
+        x = self.proj(x)
+        x = self.proj_drop(x)
+        return x
 
 
 class CrossAttention(nn.Module):
@@ -300,21 +378,33 @@ class Block(nn.Module):
             act_layer=nn.GELU,
             norm_layer=LayerNorm,
             encoded_cond_data=False,
+            use_cross_attn=False
     ):
         super().__init__()
         self.norm1 = norm_layer(dim)
-        self.normStatic = norm_layer(dim if encoded_cond_data else 3)
-        self.attn = CrossAttention(
-            dim,
-            num_heads=num_heads,
-            sr_ratio=sr_ratio,
-            linear_attn=linear_attn,
-            qkv_bias=qkv_bias,
-            attn_drop=attn_drop,
-            proj_drop=proj_drop,
-            encoded_cond_data=encoded_cond_data,
-        )
-        # self.attn2 = nn.MultiheadAttention(embed_dim=dim, num_heads=num_heads, dropout=attn_drop, bias=qkv_bias)
+        self.use_cross_attn = use_cross_attn
+        if self.use_cross_attn:
+            self.normStatic = norm_layer(dim if encoded_cond_data else 3)
+            self.attn = CrossAttention(
+                dim,
+                num_heads=num_heads,
+                sr_ratio=sr_ratio,
+                linear_attn=linear_attn,
+                qkv_bias=qkv_bias,
+                attn_drop=attn_drop,
+                proj_drop=proj_drop,
+                encoded_cond_data=encoded_cond_data,
+            )
+        else:
+            self.attn = Attention(
+                dim,
+                num_heads=num_heads,
+                sr_ratio=sr_ratio,
+                linear_attn=linear_attn,
+                qkv_bias=qkv_bias,
+                attn_drop=attn_drop,
+                proj_drop=proj_drop,
+            )
         self.drop_path1 = DropPath(drop_path) if drop_path > 0. else nn.Identity()
 
         self.norm2 = norm_layer(dim)
@@ -329,8 +419,12 @@ class Block(nn.Module):
 
     def forward(self, x, feat_size: List[int], staticData=None):
 
-        x = x + self.drop_path1(self.attn(self.norm1(x), feat_size, self.normStatic(staticData)))
-        x = x + self.drop_path2(self.mlp(self.norm2(x), feat_size))
+        if self.use_cross_attn:
+            x = x + self.drop_path1(self.attn(self.norm1(x), feat_size, self.normStatic(staticData)))
+            x = x + self.drop_path2(self.mlp(self.norm2(x), feat_size))
+        else:
+            x = x + self.drop_path1(self.attn(self.norm1(x), feat_size))
+            x = x + self.drop_path2(self.mlp(self.norm2(x), feat_size))
         # attn_res, _ = self.attn2(query=self.norm1(x), key=staticData, value=staticData, need_weights=False)
         # x = x + self.drop_path1(attn_res)
         # x = x + self.drop_path2(self.mlp(self.norm2(x), feat_size))
@@ -401,6 +495,7 @@ class PyramidVisionTransformerStage(nn.Module):
             drop_path=drop_path[i] if isinstance(drop_path, list) else drop_path,
             norm_layer=norm_layer,
             encoded_cond_data=encoded_cond_data,
+            use_cross_attn=(i+1) % 2 == 0
         ) for i in range(depth)])
 
         self.norm = norm_layer(dim_out)

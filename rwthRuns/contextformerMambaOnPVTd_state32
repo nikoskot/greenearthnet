@@ -1,0 +1,20 @@
+#!/usr/bin/zsh 
+
+### Job Parameters 
+#SBATCH --partition=c23g
+#SBATCH --time=1-10:00:00         
+#SBATCH --gres=gpu:2
+#SBATCH --cpus-per-task=16
+#SBATCH --output=slurm_MambaOnPVTd_state32Test-%A_%a.out
+#SBATCH --account=thes1823
+
+export CONDA_ROOT=$HOME/miniforge3
+source $CONDA_ROOT/etc/profile.d/conda.sh
+export PATH="$CONDA_ROOT/bin:$PATH"
+conda activate mamba
+
+# python /hpcwork/nq011071/greenearthnet/train.py /hpcwork/nq011071/greenearthnet/rwthRuns/seed=27MambaOnPVTd_state64.yaml --data_dir /hpcwork/nq011071/earthnetThesis/GreenearthnetDataset --use_mamba
+
+python /hpcwork/nq011071/greenearthnet/testRWTH.py /hpcwork/nq011071/greenearthnet/rwthRuns/seed=27MambaOnPVTd_state32.yaml /hpcwork/nq011071/greenearthnet/experiments/trainMambaOnPVTd_state32/greenearthnet/contextformer/rwthRuns/config_seed=27MambaOnPVTd_state32/checkpoints/Epoch-epoch=27-RMSEVegetation-RMSE_Veg=0.1495.ckpt --track ood-t_chopped --pred_dir /hpcwork/nq011071/greenearthnet/experiments/predictions/mambaOnPVTd_state32/ood-t_chopped --data_dir /hpcwork/nq011071/earthnetThesis/GreenearthnetDataset --use_mamba
+
+python /hpcwork/nq011071/greenearthnet/eval.py /hpcwork/nq011071/earthnetThesis/GreenearthnetDataset/ood-t_chopped /hpcwork/nq011071/greenearthnet/experiments/predictions/mambaOnPVTd_state32/ood-t_chopped /hpcwork/nq011071/greenearthnet/experiments/scores/mambaOnPVTd_state32/ood-t_chopped
