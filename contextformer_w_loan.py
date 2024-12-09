@@ -282,7 +282,7 @@ class ContextFormer(nn.Module):
             self.embed_images = PVT_embed(
                 in_channels=self.hparams.n_image,
                 out_channels=self.hparams.n_hidden,
-                pretrained=self.pretrainedContextformerWeightsPath=='',
+                pretrained=self.hparams.pretrainedPVT,
                 frozen=self.hparams.pvt_frozen,
                 pvtDownsampleLoan=self.hparams.pvtDownsampleLoan, 
                 pvtStageLastNormLoan=self.hparams.pvtStageLastNormLoan, 
@@ -414,6 +414,7 @@ class ContextFormer(nn.Module):
         parser.add_argument("--pvtDownsampleLoan", type=str2bool, default=False)
         parser.add_argument("--pvtStageLastNormLoan", type=str2bool, default=False)
         parser.add_argument("--pvtStageBlockNormLoan", type=str2bool, default=False)
+        parser.add_argument("--pretrainedPVT", type=str2bool, default=True)
         parser.add_argument("--pretrainedContextformerWeightsPath", type=str, default='')
 
         return parser
