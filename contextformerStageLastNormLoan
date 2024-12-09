@@ -1,0 +1,17 @@
+#!/bin/bash
+#SBATCH --partition=A100medium
+#SBATCH --time=24:00:00
+#SBATCH --gpus=2
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=16
+#SBATCH --dependency=afterany:123371
+
+# python /hpcwork/nq011071/greenearthnet/train.py /hpcwork/nq011071/greenearthnet/rwthRuns/seed=27AltCrossAttnOnPVTDefSRContinue.yaml --data_dir /hpcwork/nq011071/earthnetThesis/GreenearthnetDataset --use_pvt_cross_attn
+
+# python /home/nikoskot/greenearthnet/test.py /home/nikoskot/greenearthnet/model_configs/contextformer/contextformer6M/seed=27StageLastNormLoan.yaml /home/nikoskot/greenearthnet/experiments/trainStageLastNormLoan/greenearthnet/contextformer/contextformer6M/config_seed=27StageLastNormLoan/checkpoints/Epoch-epoch=55-RMSEVegetation-RMSE_Veg=0.1551.ckpt --track ood-t_chopped --pred_dir /home/nikoskot/greenearthnet/experiments/predictions/stageLastNormLoan/ood-t_chopped --data_dir /home/nikoskot/earthnetThesis/GreenEarthnetDataset/greenearthnet --use_loan
+
+# python /home/nikoskot/greenearthnet/eval.py /home/nikoskot/earthnetThesis/GreenEarthnetDataset/greenearthnet/ood-t_chopped /home/nikoskot/greenearthnet/experiments/predictions/stageLastNormLoan/ood-t_chopped /home/nikoskot/greenearthnet/experiments/scores/stageLastNormLoan/ood-t_chopped
+
+python /home/nikoskot/greenearthnet/test.py /home/nikoskot/greenearthnet/model_configs/contextformer/contextformer6M/seed=27StageLastNormLoan.yaml /home/nikoskot/greenearthnet/experiments/trainStageLastNormLoan/greenearthnet/contextformer/contextformer6M/config_seed=27StageLastNormLoan/checkpoints/Epoch-epoch=55-RMSEVegetation-RMSE_Veg=0.1551.ckpt --track ood-s_chopped --pred_dir /home/nikoskot/greenearthnet/experiments/predictions/stageLastNormLoan/ood-s_chopped --data_dir /home/nikoskot/earthnetThesis/GreenEarthnetDataset/greenearthnet --use_loan
+
+python /home/nikoskot/greenearthnet/eval.py /home/nikoskot/earthnetThesis/GreenEarthnetDataset/greenearthnet/ood-s_chopped /home/nikoskot/greenearthnet/experiments/predictions/stageLastNormLoan/ood-s_chopped /home/nikoskot/greenearthnet/experiments/scores/stageLastNormLoan/ood-s_chopped

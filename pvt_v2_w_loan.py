@@ -31,6 +31,139 @@ from timm.layers import DropPath, to_2tuple, to_ntuple, trunc_normal_, LayerNorm
 
 __all__ = ['PyramidVisionTransformerV2']
 
+# class LOAN(nn.Module):
+
+#     """ Location-aware Adaptive Normalization layer """
+
+#     def __init__(self, in_channels: int, cond_channels: int, free_norm: str = 'LayerNorm',
+#                  kernel_size: int = 3, norm: bool = True):
+#         super(LOAN, self).__init__()
+
+#         """
+#         Parameters
+#         ----------
+#         in_channels : int
+#             number of input channels
+#         cond_channels : int
+#             number of channels for conditional map
+#         free_norm : int (default batch)
+#             type of normalization to be used for the modulated map
+#         kernel_size : int (default 3)
+#             kernel size of output channels 
+#         norm : bool (default True)
+#             option to do normalization of the modulated map
+#         """
+
+#         self.in_channels = in_channels
+#         self.cond_channels = cond_channels
+#         self.kernel_size = kernel_size
+#         self.norm = norm
+#         self.k_channels = cond_channels
+
+#         if norm:
+#             if free_norm == 'BatchNorm':
+#                 self.free_norm = nn.BatchNorm3d(self.in_channels, affine=False)
+#             elif free_norm == 'LayerNorm':
+#                 self.free_norm = nn.LayerNorm(self.in_channels, elementwise_affine=False)
+#             else:
+#                 raise ValueError('%s is not a recognized free_norm type in SPADE' % free_norm)
+
+#         # self.mlp = nn.Sequential(
+#         #    nn.Conv2d(in_channels=self.cond_channels, out_channels=self.k_channels, kernel_size=self.kernel_size,
+#         #             padding=self.kernel_size//2, padding_mode='replicate'),
+#         #    nn.ReLU(inplace=True)
+#         #    )
+
+#         # projection layers
+#         # self.mlp_gamma = nn.Conv2d(self.k_channels, self.in_channels, kernel_size=self.kernel_size,
+#         #                            padding=self.kernel_size // 2)
+#         self.mlp_beta = nn.Conv2d(self.k_channels, self.in_channels, kernel_size=self.kernel_size,
+#                                   padding=self.kernel_size // 2)
+
+#         # initialize projection layers
+#         # self.mlp.apply(self.init_weights)
+#         self.mlp_beta.apply(self.init_weights)
+#         # self.mlp_gamma.apply(self.init_weights)
+
+#         # normalization for the conditional map
+#         # self.free_norm_cond = torch.nn.BatchNorm2d(cond_channels, affine=False)
+#         if free_norm == 'BatchNorm':
+#             self.free_norm_cond = torch.nn.BatchNorm2d(cond_channels, affine=False)
+#         elif free_norm == 'LayerNorm':
+#             self.free_norm_cond = nn.LayerNorm(cond_channels, elementwise_affine=False)
+
+#     def init_weights(self, m):
+#         # classname = m.__class__.__name__
+#         if isinstance(m, torch.nn.Conv2d):
+#             torch.nn.init.normal_(m.weight.data, 0.0, 0.01)
+#             if m.bias is not None:
+#                 torch.nn.init.constant_(m.bias.data, 0.0)
+
+#     def generate_one_hot(self, labels: torch.Tensor):
+
+#         """
+#         Convert the semantic map into one-hot encoded
+#         This method can be used for the CORINE land cover data_m
+#         """
+
+#         con_map = torch.nn.functional.one_hot(labels, num_classes=10)
+#         con_map = torch.permute(con_map, (0, 3, 2, 1))
+#         return con_map.float()
+
+#     def forward(self, x: torch.Tensor, con_map: torch.Tensor):
+
+#         """
+#         input tensor x [N*D, W, H, K]
+#         conditional map tensor con_map [N, W, H, K]
+#         outpu: [N*D, W, H, K]
+#         """
+#         _, W, H, K = x.shape
+
+#         # parameter-free normalized map
+#         if self.norm:
+#             # if isinstance(self.free_norm, nn.LayerNorm):
+#                 # x = x.permute(0, 2, 3, 1)   # N*D, W, H, K
+#             normalized = self.free_norm(x)
+#                 # normalized = normalized.permute(0, 3, 1, 2) # N*D, K, W, H
+#             # elif isinstance(self.free_norm, nn.BatchNorm3d):
+#                 # normalized = self.free_norm(x)
+#         else:
+#             normalized = x
+
+#         # used for data_m
+#         # con_map = self.generate_one_hot(con_map)
+#         # con_map = con_map.float()
+
+#         # produce scaling and bias conditioned on semantic map
+#         # con_map = F.interpolate(con_map, size=x.size()[-2:], mode='nearest')
+
+#         # normalize the conditional map
+#         # actv = self.free_norm_cond(con_map)
+#         # if isinstance(self.free_norm_cond, nn.LayerNorm):
+#             # con_map = con_map.permute(0, 2, 3, 1)   # N, W, H, K
+#         actv = self.free_norm_cond(con_map)
+#             # actv = actv.permute(0, 3, 1, 2) # N, K, W, H
+#         # elif isinstance(self.free_norm_cond, nn.BatchNorm2d):
+#             # actv = self.free_norm_cond(con_map)
+#         actv = nn.functional.relu(actv)
+
+#         # actv = self.mlp(con_map)
+#         # gamma = self.mlp_gamma(actv.permute(0, 3, 1, 2))
+#         beta = self.mlp_beta(actv.permute(0, 3, 1, 2))
+
+#         # Interpolate static data to match the spatial dimension of the input
+#         # gamma = F.interpolate(gamma, size=(W, H), mode='nearest').permute(0, 2, 3, 1)
+#         beta = F.interpolate(beta, size=(W, H), mode='nearest').permute(0, 2, 3, 1)
+
+#         normalized = normalized.reshape(beta.shape[0], -1, W, H, K)
+
+#         # apply scale and bias after duplication along the D time dimension
+#         # out = normalized * (1 + gamma[:, None, :, :, :]) + beta[:, None, :, :, :]
+#         out = normalized + beta[:, None, :, :, :]
+
+#         out = out.reshape(-1, W, H, K)
+#         return out
+
 class LOAN(nn.Module):
 
     """ Location-aware Adaptive Normalization layer """
@@ -75,15 +208,15 @@ class LOAN(nn.Module):
         #    )
 
         # projection layers
-        # self.mlp_gamma = nn.Conv2d(self.k_channels, self.in_channels, kernel_size=self.kernel_size,
-        #                            padding=self.kernel_size // 2)
+        self.mlp_gamma = nn.Conv2d(self.k_channels, self.in_channels, kernel_size=self.kernel_size,
+                                   padding=self.kernel_size // 2)
         self.mlp_beta = nn.Conv2d(self.k_channels, self.in_channels, kernel_size=self.kernel_size,
                                   padding=self.kernel_size // 2)
 
         # initialize projection layers
         # self.mlp.apply(self.init_weights)
         self.mlp_beta.apply(self.init_weights)
-        # self.mlp_gamma.apply(self.init_weights)
+        self.mlp_gamma.apply(self.init_weights)
 
         # normalization for the conditional map
         # self.free_norm_cond = torch.nn.BatchNorm2d(cond_channels, affine=False)
@@ -117,16 +250,16 @@ class LOAN(nn.Module):
         conditional map tensor con_map [N, W, H, K]
         outpu: [N*D, W, H, K]
         """
-        _, W, H, K = x.shape
+        _, W, H, _ = x.shape
 
         # parameter-free normalized map
         if self.norm:
-            # if isinstance(self.free_norm, nn.LayerNorm):
+            if isinstance(self.free_norm, nn.LayerNorm):
                 # x = x.permute(0, 2, 3, 1)   # N*D, W, H, K
-            normalized = self.free_norm(x)
+                normalized = self.free_norm(x)
                 # normalized = normalized.permute(0, 3, 1, 2) # N*D, K, W, H
-            # elif isinstance(self.free_norm, nn.BatchNorm3d):
-                # normalized = self.free_norm(x)
+            elif isinstance(self.free_norm, nn.BatchNorm3d):
+                normalized = self.free_norm(x)
         else:
             normalized = x
 
@@ -139,29 +272,28 @@ class LOAN(nn.Module):
 
         # normalize the conditional map
         # actv = self.free_norm_cond(con_map)
-        # if isinstance(self.free_norm_cond, nn.LayerNorm):
+        if isinstance(self.free_norm_cond, nn.LayerNorm):
             # con_map = con_map.permute(0, 2, 3, 1)   # N, W, H, K
-        actv = self.free_norm_cond(con_map)
+            actv = self.free_norm_cond(con_map)
             # actv = actv.permute(0, 3, 1, 2) # N, K, W, H
-        # elif isinstance(self.free_norm_cond, nn.BatchNorm2d):
-            # actv = self.free_norm_cond(con_map)
+        elif isinstance(self.free_norm_cond, nn.BatchNorm2d):
+            actv = self.free_norm_cond(con_map)
         actv = nn.functional.relu(actv)
 
         # actv = self.mlp(con_map)
-        # gamma = self.mlp_gamma(actv.permute(0, 3, 1, 2))
-        beta = self.mlp_beta(actv.permute(0, 3, 1, 2))
+        gamma = self.mlp_gamma(actv.permute(0, 3, 1, 2)).permute(0, 2, 3, 1)
+        beta = self.mlp_beta(actv.permute(0, 3, 1, 2)).permute(0, 2, 3, 1)
 
         # Interpolate static data to match the spatial dimension of the input
-        # gamma = F.interpolate(gamma, size=(W, H), mode='nearest').permute(0, 2, 3, 1)
-        beta = F.interpolate(beta, size=(W, H), mode='nearest').permute(0, 2, 3, 1)
-
-        normalized = normalized.reshape(beta.shape[0], -1, W, H, K)
+        # gamma = F.interpolate(gamma, size=(W, H), mode='nearest')
+        # beta = F.interpolate(beta, size=(W, H), mode='nearest')
+        if (gamma.shape[0] != normalized.shape[0]):
+            gamma = gamma.repeat(normalized.shape[0] // gamma.shape[0], 1, 1, 1)
+            beta = beta.repeat(normalized.shape[0] // beta.shape[0], 1, 1, 1)
 
         # apply scale and bias after duplication along the D time dimension
-        # out = normalized * (1 + gamma[:, None, :, :, :]) + beta[:, None, :, :, :]
-        out = normalized + beta[:, None, :, :, :]
+        out = normalized * (1 + gamma[:, :, :, :]) + beta[:, :, :, :]
 
-        out = out.reshape(-1, W, H, K)
         return out
     
 

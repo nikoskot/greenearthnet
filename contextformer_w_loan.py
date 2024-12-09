@@ -239,6 +239,35 @@ class PVT_embed(nn.Module):
 
         return x_patches
     
+# class StaticDataEncoder(nn.Module):
+#     def __init__(self, in_channels=3, final_channels=256):
+#         super(StaticDataEncoder, self).__init__()
+
+#         if final_channels == 256:
+#             self.dims = [32,64,160,256]
+#         elif final_channels == 192:
+#             self.dims = [24,48,120,192]
+#         else:
+#             self.dims = [16,32,80,128]
+
+#         # self.dims = [32, 64, 160, 256]
+        
+#         self.convs = nn.ModuleList([])
+#         for i, d in enumerate(self.dims):
+#             self.convs.append(nn.Conv2d(in_channels=in_channels, out_channels=self.dims[i], kernel_size=3, stride=1, padding=(0, 0)))
+
+#     def forward(self, x):
+#         # x_out = []
+
+#         # for i, c in enumerate(self.convs):
+#         #     x_out.append(F.relu(c(x)))
+#         x0 = F.relu(self.convs[0](x))
+#         x1 = F.relu(self.convs[1](x))
+#         x2 = F.relu(self.convs[2](x))
+#         x3 = F.relu(self.convs[3](x))
+
+#         return [x0, x1, x2, x3]
+    
 class StaticDataEncoder(nn.Module):
     def __init__(self, in_channels=3, final_channels=256):
         super(StaticDataEncoder, self).__init__()
@@ -249,24 +278,27 @@ class StaticDataEncoder(nn.Module):
             self.dims = [24,48,120,192]
         else:
             self.dims = [16,32,80,128]
-
         # self.dims = [32, 64, 160, 256]
-        
-        self.convs = nn.ModuleList([])
+
+        self.convs = nn.ModuleList([nn.Conv2d(in_channels=in_channels, out_channels=self.dims[0], kernel_size=7, stride=4, padding=(3, 3))])
+        self.norm = nn.LayerNorm(self.dims[0])
         for i, d in enumerate(self.dims):
-            self.convs.append(nn.Conv2d(in_channels=in_channels, out_channels=self.dims[i], kernel_size=3, stride=1, padding=(0, 0)))
+            if i > 0:
+                self.convs.append(nn.Conv2d(in_channels=self.dims[i-1], out_channels=self.dims[i], kernel_size=3, stride=2, padding=(1, 1)))
 
     def forward(self, x):
-        # x_out = []
+        x_out = []
 
-        # for i, c in enumerate(self.convs):
-        #     x_out.append(F.relu(c(x)))
-        x0 = F.relu(self.convs[0](x))
-        x1 = F.relu(self.convs[1](x))
-        x2 = F.relu(self.convs[2](x))
-        x3 = F.relu(self.convs[3](x))
+        for i, c in enumerate(self.convs):
+            x = c(x)
+            if i == 0:
+                x = x.permute(0, 2, 3, 1)
+                x = self.norm(x)
+                x = x.permute(0, 3, 1, 2)
+            x = F.relu(x)
+            x_out.append(x)
 
-        return [x0, x1, x2, x3]
+        return x_out
 
 
 class ContextFormer(nn.Module):
