@@ -1,0 +1,55 @@
+base_dir: /hpcwork/nq011071/earthnetThesis/EarthnetDataset
+compute_metric_on_test: false
+context_length: 10
+fp16: false
+full_sea_remove_first_n_steps: 0
+landcover_folder: null
+lc_max: 40
+lc_min: 10
+loss:
+  context_length: 10
+  lc_max: 40
+  lc_min: 10
+  name: MaskedL2NDVILoss
+  ndvi_pred_idx: 0
+  ndvi_targ_idx: 0
+  pred_mask_value: -1
+  scale_by_std: false
+  setting: en21-std
+  target_length: 20
+metric: RMSE
+metric_kwargs:
+  context_length: 10
+  lc_max: 40
+  lc_min: 10
+  target_length: 20
+n_log_batches: 2
+n_stochastic_preds: 1
+noisy_masked_pixels: true
+num_workers: 16
+optimization:
+  lr_shedule:
+  - args:
+      gamma: 0.1
+      milestones:
+      - 190
+    name: MultiStepLR
+  optimizer:
+  - args:
+      betas:
+      - 0.9
+      - 0.999
+      lr: 2.0e-05
+    lr_per_sample: 1.25e-06
+    name: AdamW
+pred_dir: null
+setting: en21-std
+shedulers: []
+target_length: 20
+test_batch_size: 8
+test_track: iid
+train_batch_size: 16
+use_meso_static_as_dynamic: true
+val_batch_size: 8
+val_pct: 0.05
+val_split_seed: 27.0

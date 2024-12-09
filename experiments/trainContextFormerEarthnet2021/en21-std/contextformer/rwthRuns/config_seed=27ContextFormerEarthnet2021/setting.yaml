@@ -1,0 +1,97 @@
+Architecture: contextformer
+Checkpointer:
+  every_n_epochs: 1
+  filename: Epoch-{epoch:02d}-ENS-{EarthNetScore:.4f}
+  mode: max
+  monitor: EarthNetScore
+  save_last: true
+  save_top_k: 1
+Data:
+  base_dir: /hpcwork/nq011071/earthnetThesis/EarthnetDataset
+  fp16: false
+  num_workers: 16
+  test_batch_size: 8
+  test_track: iid
+  train_batch_size: 16
+  val_batch_size: 8
+  val_split_seed: 27
+Logger:
+  name: rwthRuns
+  save_dir: experiments/trainContextFormerEarthnet2021/en21-std/contextformer
+  version: config_seed=27ContextFormerEarthnet2021
+Model:
+  add_last_ndvi: true
+  add_mean_ndvi: false
+  context_length: 10
+  depth: 3
+  leave_n_first: 3
+  mask_clouds: true
+  mlp_ratio: 4.0
+  mtm: true
+  n_heads: 8
+  n_hidden: 256
+  n_image: 6
+  n_out: 1
+  n_weather: 5
+  p_mtm: 0.7
+  p_use_mtm: 0.5
+  patch_size: 4
+  predict_delta: false
+  predict_delta0: false
+  predict_delta_avg: false
+  predict_delta_max: false
+  pvt: true
+  pvt_frozen: false
+  target_length: 20
+Seed: 27
+Setting: en21-std
+Task:
+  compute_metric_on_test: false
+  context_length: 10
+  lc_max: 40
+  lc_min: 10
+  loss:
+    context_length: 10
+    lc_max: 40
+    lc_min: 10
+    name: MaskedL2NDVILoss
+    ndvi_pred_idx: 0
+    ndvi_targ_idx: 0
+    pred_mask_value: -1
+    scale_by_std: false
+    setting: en21-std
+    target_length: 20
+  metric_kwargs:
+    context_length: 10
+    lc_max: 40
+    lc_min: 10
+    target_length: 20
+  n_log_batches: 2
+  n_stochastic_preds: 1
+  optimization:
+    lr_shedule:
+    - args:
+        gamma: 0.1
+        milestones:
+        - 190
+      name: MultiStepLR
+    optimizer:
+    - args:
+        betas:
+        - 0.9
+        - 0.999
+        lr: 2.0e-05
+      lr_per_sample: 1.25e-06
+      name: AdamW
+  setting: en21-std
+  target_length: 20
+  test_batch_size: 8
+  train_batch_size: 16
+  val_batch_size: 8
+Trainer:
+  devices: 1
+  gradient_clip_val: 1
+  log_every_n_steps: 32
+  max_epochs: 100
+  precision: 32
+  strategy: ddp_find_unused_parameters_true

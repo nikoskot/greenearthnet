@@ -1,0 +1,24 @@
+#!/usr/bin/zsh 
+
+### Job Parameters 
+#SBATCH --partition=c23g
+#SBATCH --time=1-10:00:00         
+#SBATCH --gres=gpu:2
+#SBATCH --cpus-per-task=16
+#SBATCH --output=slurm_StageLastNormLoanTest-%A_%a.out
+#SBATCH --account=thes1823
+
+export CONDA_ROOT=$HOME/miniforge3
+source $CONDA_ROOT/etc/profile.d/conda.sh
+export PATH="$CONDA_ROOT/bin:$PATH"
+conda activate greenearthnet2
+
+# python /hpcwork/nq011071/greenearthnet/train.py /hpcwork/nq011071/greenearthnet/rwthRuns/seed=27AltCrossAttnOnPVTDefSRContinue.yaml --data_dir /hpcwork/nq011071/earthnetThesis/GreenearthnetDataset --use_pvt_cross_attn
+
+python /hpcwork/nq011071/greenearthnet/testRWTH.py /hpcwork/nq011071/greenearthnet/rwthRuns/seed=27StageLastNormLoan.yaml /hpcwork/nq011071/greenearthnet/experiments/trainStageLastNormLoan/greenearthnet/contextformer/contextformer6M/config_seed=27StageLastNormLoan/checkpoints/Epoch-epoch=55-RMSEVegetation-RMSE_Veg=0.1551.ckpt --track ood-t_chopped --pred_dir /hpcwork/nq011071/greenearthnet/experiments/predictions/stageLastNormLoan/ood-t_chopped --data_dir /hpcwork/nq011071/earthnetThesis/GreenearthnetDataset --use_loan
+
+python /hpcwork/nq011071/greenearthnet/eval.py /hpcwork/nq011071/earthnetThesis/GreenearthnetDataset/ood-t_chopped /hpcwork/nq011071/greenearthnet/experiments/predictions/stageLastNormLoan/ood-t_chopped /hpcwork/nq011071/greenearthnet/experiments/scores/stageLastNormLoan/ood-t_chopped
+
+python /hpcwork/nq011071/greenearthnet/testRWTH.py /hpcwork/nq011071/greenearthnet/rwthRuns/seed=27StageLastNormLoan.yaml /hpcwork/nq011071/greenearthnet/experiments/trainStageLastNormLoan/greenearthnet/contextformer/contextformer6M/config_seed=27StageLastNormLoan/checkpoints/Epoch-epoch=55-RMSEVegetation-RMSE_Veg=0.1551.ckpt --track ood-s_chopped --pred_dir /hpcwork/nq011071/greenearthnet/experiments/predictions/stageLastNormLoan/ood-s_chopped --data_dir /hpcwork/nq011071/earthnetThesis/GreenearthnetDataset/greenearthnet --use_loan
+
+python /hpcwork/nq011071/greenearthnet/eval.py /hpcwork/nq011071/earthnetThesis/GreenearthnetDataset/greenearthnet/ood-s_chopped /hpcwork/nq011071/greenearthnet/experiments/predictions/stageLastNormLoan/ood-s_chopped /hpcwork/nq011071/greenearthnet/experiments/scores/stageLastNormLoan/ood-s_chopped

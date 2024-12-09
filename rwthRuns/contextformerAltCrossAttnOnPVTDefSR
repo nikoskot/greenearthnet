@@ -3,9 +3,9 @@
 ### Job Parameters 
 #SBATCH --partition=c23g
 #SBATCH --time=1-10:00:00         
-#SBATCH --gres=gpu:1
+#SBATCH --gres=gpu:2
 #SBATCH --cpus-per-task=16
-#SBATCH --output=slurm_AltCrossAttnOnPVTDefSRTest-%A_%a.out
+#SBATCH --output=slurm_AltCrossAttnOnPVTDefSRTestCont-%A_%a.out
 #SBATCH --account=thes1823
 
 export CONDA_ROOT=$HOME/miniforge3
@@ -13,8 +13,8 @@ source $CONDA_ROOT/etc/profile.d/conda.sh
 export PATH="$CONDA_ROOT/bin:$PATH"
 conda activate greenearthnet2
 
-# python /hpcwork/nq011071/greenearthnet/train.py /hpcwork/nq011071/greenearthnet/rwthRuns/seed=27AltCrossAttnOnPVTDefSR.yaml --data_dir /hpcwork/nq011071/earthnetThesis/GreenearthnetDataset --use_pvt_cross_attn
+# python /hpcwork/nq011071/greenearthnet/train.py /hpcwork/nq011071/greenearthnet/rwthRuns/seed=27AltCrossAttnOnPVTDefSRContinue.yaml --data_dir /hpcwork/nq011071/earthnetThesis/GreenearthnetDataset --use_pvt_cross_attn
 
-python /hpcwork/nq011071/greenearthnet/testRWTH.py /hpcwork/nq011071/greenearthnet/rwthRuns/seed=27AltCrossAttnOnPVTDefSR.yaml /hpcwork/nq011071/greenearthnet/experiments/trainAltCrossAttnOnPVTDefSR/greenearthnet/contextformer/rwthRuns/config_seed=27AltCrossAttnOnPVTDefSR/checkpoints/Epoch-epoch=58-RMSEVegetation-RMSE_Veg=0.1581.ckpt --track ood-t_chopped --pred_dir /hpcwork/nq011071/greenearthnet/experiments/predictions/altCrossAttnOnPVTDefSR/ood-t_chopped --data_dir /hpcwork/nq011071/earthnetThesis/GreenearthnetDataset --use_pvt_cross_attn
+python /hpcwork/nq011071/greenearthnet/testRWTH.py /hpcwork/nq011071/greenearthnet/rwthRuns/seed=27AltCrossAttnOnPVTDefSRContinue.yaml /hpcwork/nq011071/greenearthnet/experiments/trainAltCrossAttnOnPVTDefSRContinue/greenearthnet/contextformer/rwthRuns/config_seed=27AltCrossAttnOnPVTDefSRContinue/checkpoints/Epoch-epoch=19-RMSEVegetation-RMSE_Veg=0.1573.ckpt --track ood-t_chopped --pred_dir /hpcwork/nq011071/greenearthnet/experiments/predictions/altCrossAttnOnPVTDefSRContinue/ood-t_chopped --data_dir /hpcwork/nq011071/earthnetThesis/GreenearthnetDataset --use_pvt_cross_attn
 
-python /hpcwork/nq011071/greenearthnet/eval.py /hpcwork/nq011071/earthnetThesis/GreenearthnetDataset/ood-t_chopped /hpcwork/nq011071/greenearthnet/experiments/predictions/altCrossAttnOnPVTDefSR/ood-t_chopped /hpcwork/nq011071/greenearthnet/experiments/scores/altCrossAttnOnPVTDefSR/ood-t_chopped
+python /hpcwork/nq011071/greenearthnet/eval.py /hpcwork/nq011071/earthnetThesis/GreenearthnetDataset/ood-t_chopped /hpcwork/nq011071/greenearthnet/experiments/predictions/altCrossAttnOnPVTDefSRContinue/ood-t_chopped /hpcwork/nq011071/greenearthnet/experiments/scores/altCrossAttnOnPVTDefSRContinue/ood-t_chopped

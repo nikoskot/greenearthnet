@@ -20,7 +20,7 @@ Trainer:
     gradient_clip_val: 1
 
 Data:
-    test_track: "ood-t_chopped"
+    test_track: "ood-s_chopped"
     train_batch_size: 16
     val_batch_size: 8
     test_batch_size: 8
